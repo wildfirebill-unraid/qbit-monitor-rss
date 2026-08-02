@@ -181,3 +181,23 @@ class QBittorrent:
         except httpx.HTTPError as exc:
             log.warning("add_url failed %s: %s", self.url, exc)
             return f"error: {exc}"
+
+    async def delete(self, hashes: list[str], delete_files: bool = False) -> str:
+        """Remove torrents. delete_files=False keeps the data on disk."""
+        if not hashes:
+            return ""
+        if not await self._ensure_auth():
+            return "auth failed"
+        try:
+            r = await self._request(
+                "DELETE",
+                "/api/v2/torrents/delete",
+                params={
+                    "hashes": "|".join(hashes),
+                    "deleteFiles": "true" if delete_files else "false",
+                },
+            )
+            return (r.text or "").strip()
+        except httpx.HTTPError as exc:
+            log.warning("delete failed %s: %s", self.url, exc)
+            return f"error: {exc}"

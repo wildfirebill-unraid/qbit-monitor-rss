@@ -223,13 +223,16 @@ function renderTorrents() {
   });
 
   const allTab = S.activeTab === "all";
+  const multiInst = (S.state?.instances || []).length > 1;
   const arrow = (k) => (S.sortKey === k ? (S.sortDir === 1 ? " \u25b2" : " \u25bc") : "");
   const cols = allTab
     ? `<th data-k="instance_name">Instance${arrow("instance_name")}</th>` : "";
+  const actionTh = multiInst ? "<th>Actions</th>" : "";
+  const colspan = (allTab ? 9 : 8) + (multiInst ? 1 : 0);
 
   let rows;
   if (!list.length) {
-    rows = `<tr><td colspan="${allTab ? 9 : 8}" class="empty">No torrents${q ? " matching \u201c" + esc(q) + "\u201d" : ""}</td></tr>`;
+    rows = `<tr><td colspan="${colspan}" class="empty">No torrents${q ? " matching \u201c" + esc(q) + "\u201d" : ""}</td></tr>`;
   } else {
     const seedHours = S.state?.slots?.seed_hours || 72.5;
     rows = list.map((t) => {
@@ -240,6 +243,9 @@ function renderTorrents() {
         ? `<td><span class="inst-badge"><i style="background:${t.instance_connected ? "var(--green)" : "var(--red)"}"></i>${esc(t.instance_name)}</span></td>`
         : "";
       const seedLeft = Math.max(0, seedHours * 3600 - ((t.seeding_time || 0)));
+      const move = multiInst
+        ? `<td><button class="btn sm ghost move-btn" data-move-hash="${esc(t.hash || "")}" data-move-from="${t.instance_id}">Move</button></td>`
+        : "";
       return `<tr title="${esc(t.hash || "")}">
         ${inst}
         <td class="name">${esc(name)}${cat}</td>
@@ -250,6 +256,7 @@ function renderTorrents() {
         <td class="num">${fmtDuration(t.seeding_time)}</td>
         <td class="num" title="Remaining until ${seedHours}h seeding frees a slot">${fmtDuration(seedLeft)}</td>
         <td class="num">${fmtDate(t.added_on)}</td>
+        ${move}
       </tr>`;
     }).join("");
   }
@@ -258,6 +265,8 @@ function renderTorrents() {
     <div class="toolbar">
       <input class="search" placeholder="Search torrents\u2026" value="${esc(S.search)}" id="search-box" />
       <span class="btn ghost" id="toggle-completed" title="Show/hide 100% completed torrents" style="opacity:.85">&#128065;</span>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="torrent-add">+ Add torrent</button>
     </div>
     <div class="torrent-table-wrap">
       <table class="torrents">
@@ -271,6 +280,7 @@ function renderTorrents() {
           <th data-k="seeding_time">Seed time${arrow("seeding_time")}</th>
           <th data-k="seed_left">Seed left${arrow("seed_left")}</th>
           <th data-k="added_on">Added${arrow("added_on")}</th>
+          ${actionTh}
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -294,6 +304,13 @@ function wireTorrentEvents() {
       else { S.sortKey = k; S.sortDir = k === "name" ? 1 : -1; }
       renderTorrents();
     })
+  );
+  const addBtn = $("torrent-add");
+  if (addBtn) addBtn.addEventListener("click", () => openAddDialog());
+  document.querySelectorAll(".move-btn").forEach((b) =>
+    b.addEventListener("click", () =>
+      openMoveDialog(b.dataset.moveHash, Number(b.dataset.moveFrom))
+    )
   );
 }
 
@@ -630,6 +647,106 @@ function openFeedDialog(id) {
     });
     dlg.close();
     await Promise.all([pollRss(), pollState()]);
+  };
+}
+
+function openAddDialog(preferredInstanceId) {
+  const dlg = $("addDialog");
+  const sel = $("add-instance");
+  const instances = S.state?.instances || [];
+  if (!instances.length) {
+    alert("Add a qBittorrent instance first.");
+    return;
+  }
+  $("add-urls").value = "";
+  $("add-savepath").value = "";
+  $("add-category").value = "";
+  $("add-result").textContent = "";
+  $("add-result").className = "test-result";
+  const preferred = preferredInstanceId
+    ?? (S.activeTab !== "all" ? Number(S.activeTab) : instances[0].id);
+  sel.innerHTML = instances
+    .map((i) => `<option value="${i.id}" ${i.id === preferred ? "selected" : ""}>${esc(i.name)}</option>`)
+    .join("");
+
+  const fillCategories = () => {
+    const inst = instances.find((i) => String(i.id) === String(sel.value));
+    $("add-categories").innerHTML = (inst && inst.categories ? inst.categories : [])
+      .map((c) => `<option value="${esc(c)}"></option>`)
+      .join("");
+  };
+  fillCategories();
+  sel.addEventListener("change", fillCategories);
+  dlg.showModal();
+
+  $("add-go").onclick = async () => {
+    const urls = $("add-urls").value.trim();
+    if (!urls) { alert("Paste a magnet link or .torrent URL."); return; }
+    const res = $("add-result");
+    res.className = "test-result";
+    res.textContent = "Adding\u2026";
+    const r = await api(`/api/instances/${Number(sel.value)}/add`, {
+      method: "POST",
+      body: JSON.stringify({
+        urls: urls,
+        save_path: $("add-savepath").value.trim(),
+        category: $("add-category").value.trim(),
+      }),
+    });
+    res.classList.toggle("ok", r.ok);
+    res.classList.toggle("bad", !r.ok);
+    if (r.ok) {
+      res.textContent = `Added to ${sel.options[sel.selectedIndex].text}.`;
+      setTimeout(() => { dlg.close(); pollTorrents(); }, 600);
+    } else {
+      res.textContent = `Failed: ${r.error || "unknown error"}`;
+    }
+  };
+}
+
+function openMoveDialog(hash, fromInstance) {
+  const dlg = $("moveDialog");
+  const instances = S.state?.instances || [];
+  const t = S.torrents.find((x) => x.hash === hash && x.instance_id === fromInstance);
+  const others = instances.filter((i) => i.id !== fromInstance);
+  if (!others.length) {
+    alert("No other instances to move to.");
+    return;
+  }
+  $("move-hash").value = hash;
+  $("move-from").value = fromInstance;
+  $("move-title").textContent = t ? t.name || t.hash : hash;
+  const sel = $("move-to");
+  sel.innerHTML = others
+    .map((i) => `<option value="${i.id}">${esc(i.name)}</option>`)
+    .join("");
+  $("move-result").textContent = "";
+  $("move-result").className = "test-result";
+  dlg.showModal();
+
+  $("move-go").onclick = async () => {
+    const res = $("move-result");
+    res.className = "test-result";
+    res.textContent = "Moving\u2026";
+    const r = await api("/api/torrents/move", {
+      method: "POST",
+      body: JSON.stringify({
+        from_instance: fromInstance,
+        to_instance: Number(sel.value),
+        hashes: [hash],
+      }),
+    });
+    res.classList.toggle("ok", r.ok);
+    res.classList.toggle("bad", !r.ok);
+    if (r.ok) {
+      const moved = (r.moved || []).length;
+      res.textContent = moved
+        ? `Moved to ${sel.options[sel.selectedIndex].text}.`
+        : `Not moved: ${(r.failed || []).map((f) => f.error).join("; ") || "unknown"}`;
+      if (moved) setTimeout(() => { dlg.close(); Promise.all([pollState(), pollTorrents()]); }, 600);
+    } else {
+      res.textContent = `Failed: ${r.error || "unknown error"}`;
+    }
   };
 }
 

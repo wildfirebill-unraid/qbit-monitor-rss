@@ -192,6 +192,41 @@ class DB:
         )
         self._conn.commit()
 
+    def move_tracked(self, info_hash, from_id, to_id):
+        """Re-key a tracked torrent to a new instance, carrying over its state."""
+        row = self._execute(
+            "SELECT * FROM tracked_torrents WHERE hash=? AND instance_id=?",
+            (info_hash, from_id),
+        ).fetchone()
+        if row:
+            self._execute(
+                "DELETE FROM tracked_torrents WHERE hash=? AND instance_id=?",
+                (info_hash, from_id),
+            )
+            self._execute(
+                "INSERT OR REPLACE INTO tracked_torrents "
+                "(hash, instance_id, title, feed_id, added_at, slot_released, last_seed_seconds, last_seen_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    info_hash,
+                    to_id,
+                    row["title"],
+                    row["feed_id"],
+                    row["added_at"],
+                    row["slot_released"],
+                    row["last_seed_seconds"],
+                    time.time(),
+                ),
+            )
+        self._conn.commit()
+
+    def retarget_added(self, info_hash, to_id):
+        self._execute(
+            "UPDATE added_torrents SET instance_id=? WHERE info_hash=?",
+            (to_id, info_hash),
+        )
+        self._conn.commit()
+
     def slots_in_use(self) -> int:
         cur = self._execute(
             "SELECT COUNT(*) AS c FROM tracked_torrents WHERE slot_released=0"

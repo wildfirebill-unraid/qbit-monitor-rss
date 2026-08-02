@@ -101,6 +101,50 @@
   </form>
 </dialog>
 
+<!-- Add torrent dialog -->
+<dialog id="addDialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2>Add torrent</h2>
+    <label>Magnet links or .torrent URLs (one per line)
+      <textarea id="add-urls" rows="3" placeholder="magnet:?xt=urn:btih:...&#10;https://tracker.example/file.torrent"></textarea>
+    </label>
+    <label>Download to instance
+      <select id="add-instance"></select>
+    </label>
+    <label>Save path (optional)
+      <input type="text" id="add-savepath" placeholder="/downloads/..." />
+    </label>
+    <label>Category (optional)
+      <input type="text" id="add-category" list="add-categories" placeholder="tv" />
+      <datalist id="add-categories"></datalist>
+    </label>
+    <div id="add-result" class="test-result"></div>
+    <div class="dialog-actions">
+      <button type="button" id="add-go" class="btn primary">Add</button>
+      <button type="button" class="btn" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Move torrent dialog -->
+<dialog id="moveDialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2>Move torrent</h2>
+    <input type="hidden" id="move-hash" />
+    <input type="hidden" id="move-from" />
+    <p id="move-title" class="move-title"></p>
+    <label>Destination instance
+      <select id="move-to"></select>
+    </label>
+    <p class="move-note">Files stay on disk; the destination re-adds the torrent at the same save path and rechecks.</p>
+    <div id="move-result" class="test-result"></div>
+    <div class="dialog-actions">
+      <button type="button" id="move-go" class="btn primary">Move</button>
+      <button type="button" class="btn" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

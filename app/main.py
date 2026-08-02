@@ -102,6 +102,18 @@ class SettingsIn(BaseModel):
     data_folder: str | None = None
 
 
+class AddTorrentIn(BaseModel):
+    urls: str = ""
+    save_path: str = ""
+    category: str = ""
+
+
+class MoveTorrentsIn(BaseModel):
+    from_instance: int
+    to_instance: int
+    hashes: list[str] = []
+
+
 # --------------------------------------------------------------------- state
 @app.get("/api/state")
 async def api_state():
@@ -274,6 +286,22 @@ async def api_instance_delete(iid: int):
     cfg["instances"] = [i for i in cfg["instances"] if i["id"] != iid]
     save_cfg()
     return {"ok": True}
+
+
+@app.post("/api/instances/{iid}/add")
+async def api_instance_add(iid: int, body: AddTorrentIn):
+    if not body.urls.strip():
+        raise HTTPException(400, "urls is required")
+    return await manager.add_torrent(
+        iid, body.urls.strip(), body.save_path.strip(), body.category.strip()
+    )
+
+
+@app.post("/api/torrents/move")
+async def api_torrents_move(body: MoveTorrentsIn):
+    if not body.hashes:
+        raise HTTPException(400, "hashes is required")
+    return await manager.move_torrents(body.from_instance, body.to_instance, body.hashes)
 
 
 # -------------------------------------------------------------------- feeds

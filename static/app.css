@@ -258,14 +258,18 @@ table.torrents { width: 100%; border-collapse: collapse; font-size: 13px; }
   color: var(--muted); font-size: 12px; margin-bottom: 12px;
 }
 .dialog label.check { flex-direction: row; align-items: center; gap: 8px; }
-.dialog input, .dialog select {
+.dialog input, .dialog select, .dialog textarea {
   background: var(--panel2); border: 1px solid var(--border); color: var(--text);
   padding: 8px 10px; border-radius: 8px; font-size: 13px;
+  font-family: inherit;
 }
+.dialog textarea { resize: vertical; }
 .dialog-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
 .test-result { font-size: 12px; margin: 4px 0 10px; }
 .test-result.ok { color: var(--green); }
 .test-result.bad { color: var(--red); }
+.move-title { margin: 0 0 12px; font-size: 13px; word-break: break-all; }
+.move-note { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
 
 /* ---------------------------------------------------------------- footer */
 .foot {

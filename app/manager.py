@@ -5,6 +5,7 @@ the limited-slot auto-download queue and cross-instance de-duplication.
 import asyncio
 import logging
 import time
+from urllib.parse import quote
 
 from . import rss as rssmod
 from .bencode import hex_info_hash
@@ -290,6 +291,67 @@ class Manager:
                 if (t.get("hash") or "").lower() == h:
                     return True
         return False
+
+    # ------------------------------------------------------- manual actions
+    async def add_torrent(
+        self, instance_id: int, urls: str, save_path: str = "", category: str = ""
+    ) -> dict:
+        """Add one or more magnet links / .torrent URLs to an instance."""
+        inst = self._instance_config(instance_id)
+        if inst is None:
+            return {"ok": False, "error": "instance not found"}
+        client = self.clients.get(instance_id)
+        if client is None:
+            return {"ok": False, "error": "client not initialised"}
+        resp = await client.add_url(urls, save_path, category)
+        if resp == "Ok.":
+            return {"ok": True, "resp": resp}
+        if resp.startswith("error:") or resp == "auth failed":
+            return {"ok": False, "error": resp}
+        return {"ok": True, "resp": resp}
+
+    def _instance_config(self, iid: int):
+        return next((i for i in self.config.get("instances", []) if i["id"] == iid), None)
+
+    async def move_torrents(self, from_id: int, to_id: int, hashes: list[str]) -> dict:
+        """Re-home torrents: add to the destination (same save path) then drop
+        from the source without deleting the data on disk."""
+        if from_id == to_id:
+            return {"ok": False, "error": "source and destination are the same instance"}
+        if not self.instance_cache.get(from_id, {}).get("connected"):
+            return {"ok": False, "error": "source instance not connected"}
+        if not self.instance_cache.get(to_id, {}).get("connected"):
+            return {"ok": False, "error": "destination instance not connected"}
+        dst_client = self.clients.get(to_id)
+        src_client = self.clients.get(from_id)
+        if src_client is None or dst_client is None:
+            return {"ok": False, "error": "client not initialised"}
+
+        src_torrents = {
+            (t.get("hash") or "").lower(): t
+            for t in self.instance_cache.get(from_id, {}).get("torrents", [])
+        }
+        moved, failed = [], []
+        for h in hashes:
+            h = h.lower()
+            t = src_torrents.get(h)
+            if t is None:
+                failed.append({"hash": h, "error": "not found on the source instance"})
+                continue
+            name = t.get("name") or ""
+            save_path = t.get("save_path") or ""
+            category = t.get("category") or ""
+            magnet = f"magnet:?xt=urn:btih:{h}&dn={quote(name)}"
+            resp = await dst_client.add_url(magnet, save_path, category)
+            if resp != "Ok.":
+                failed.append({"hash": h, "error": f"destination add failed: {resp}"})
+                continue
+            await src_client.delete([h], delete_files=False)
+            self.db.move_tracked(h, from_id, to_id)
+            self.db.retarget_added(h, to_id)
+            moved.append({"hash": h, "name": name})
+            log.info("Moved %s -> instance %s (data kept at %s)", name, to_id, save_path or "?")
+        return {"ok": True, "moved": moved, "failed": failed}
 
     # ---------------------------------------------------------------- views
     def status(self) -> dict:
