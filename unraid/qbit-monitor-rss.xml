@@ -45,7 +45,5 @@ Documentation: <a href="https://github.com/wildfirebill-unraid/qbit-monitor-rss"
   </Data>
   <Environment/>
   <Labels/>
-  <Config Name="WebUI" Target="/" Default="http://[IP]:[PORT:8200]" Mode="" Description="qbit-monitor-rss web interface. Configure instances, feeds, and settings from here." Type="Url" Display="always" Required="true" Mask="false"/>
-  <Config Name="WebUI Port" Target="8000" Default="8200" Mode="tcp" Description="Container port for the web UI. This is fixed at 8000 inside the container; change the host port mapping instead." Type="Port" Display="always" Required="true" Mask="false"/>
   <Config Name="AppData" Target="/data" Default="/mnt/user/appdata/qbit-monitor-rss" Mode="rw" Description="Persistent storage for the SQLite database and config.json. Back this folder up to keep your instances, feeds, and slot state." Type="Path" Display="always" Required="true" Mask="false"/>
 </Container>
