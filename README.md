@@ -21,6 +21,7 @@ Think of it as a lightweight "tracker gatekeeper": it watches your private-track
 - **Automatic + manual scanning** — per-feed **Scan** button, a global force scan, and a scheduled scan every `rss_scan_interval_minutes`.
 - **Per-feed target routing** — each feed points at the instance it should add to, with optional save path, category (autocompleted from the instance's categories), and max slots.
 - **Default save folder** — torrents land in `/data/torrents` by default (configurable); feeds can override per-feed.
+- **Manual add + move** — paste magnet links or `.torrent` URLs straight into the GUI (one per line, optional save path/category), and move any torrent between instances from the table — files stay on disk, the destination re-adds at the same save path and rechecks.
 - **Persistent storage** — SQLite database and `config.json` live in `/data`, so your state survives restarts and updates.
 - **Web GUI included** — no external frontend build; a clean, sortable, tabbed interface is served directly by the app, with a **Seed left** column showing time until a slot frees.
 - **Multi-arch container** — `linux/amd64` and `linux/arm64` images published to GHCR on every release.
@@ -170,6 +171,21 @@ scan) and automatic every `rss_scan_interval_minutes`.
 5. Every poll, torrents with `seeding_time >= seed_hours * 3600` (or that
    vanished from the client) release their slot, letting the queue advance.
 
+### Manual add / move
+
+The **+ Add torrent** button (top of the torrents table) sends magnet links or
+`.torrent` URLs to a chosen instance — one per line, with optional save path and
+category. It goes straight to the client and does *not* consume a tracked slot,
+so it's for one-off downloads you want outside the slot budget.
+
+The **Move** button (per-row, shown when you have more than one instance)
+re-homes a torrent to another instance: the destination re-adds the same
+info-hash at the source's save path and category, then the source is dropped
+*without* deleting the data on disk. The destination finds the existing files
+and rechecks them, so nothing is re-downloaded; the tracker carries over the
+torrent's accumulated seed time so your seed-clock credit is preserved. Moving
+requires both instances to be connected, and source/destination must differ.
+
 ## FAQ
 
 **Does this work with private trackers?** Yes — it only uses standard RSS 2.0 /
@@ -198,6 +214,17 @@ torrent table shows a **Seed left** column counting down until release.
 **Where is my data stored?** SQLite (`state.db`) and `config.json` in `/data`
 (`DATA_DIR`). Back it up or mount it wherever your appdata lives.
 
+**What does "Move" do to my files?** Nothing — the files stay on disk. The
+destination instance re-adds the same info-hash at the source's save path, finds
+the already-downloaded data and rechecks it, and the source instance is removed
+without deleting its data. Seed time carried over in the tracker keeps the slot
+clock accurate.
+
+**Can I download something outside the RSS slot budget?** Yes — use the **+ Add
+torrent** button. Manually added torrents go straight to the client and don't
+reserve a tracked slot, so they never wait behind the queue or count toward the
+cap.
+
 ## Troubleshooting
 
 - **`qBittorrent unreachable` in the logs** — verify the instance URL uses the
@@ -216,6 +243,8 @@ torrent table shows a **Seed left** column counting down until release.
 - `GET /api/rss` — feeds + items
 - `POST /api/settings` — update slots/seed/poll settings + `data_folder`
 - `POST /api/instances/save` | `/test` | `/delete`
+- `POST /api/instances/{id}/add` — add magnet links / `.torrent` URLs to an instance
+- `POST /api/torrents/move` — move torrents between instances (`from_instance`, `to_instance`, `hashes`)
 - `POST /api/feeds/save` | `/delete` | `/toggle` | `/{id}/scan`
 - `POST /api/rss/{guid}/action` — `ignore` / `retry` / `add-now`
 
