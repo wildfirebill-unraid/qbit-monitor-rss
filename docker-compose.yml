@@ -1,0 +1,26 @@
+services:
+  qbit-monitor:
+    build: .
+    container_name: qbit-monitor
+    restart: unless-stopped
+    ports:
+      # Change the left side to any free port on your Unraid host.
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      # Optional: hard-code a config path (defaults to $DATA_DIR/config.json)
+      # - CONFIG_FILE=/data/config.json
+    # If you want to reach other containers by name, attach to your custom docker network:
+    # networks:
+    #   qbitnet:
+    #     ipv4_address: 172.18.0.20
+    # networks:
+    #   qbitnet:
+    #     external: true
+
+# If you uncomment the network above, define it here:
+# networks:
+#   qbitnet:
+#     external: true

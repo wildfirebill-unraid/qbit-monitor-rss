@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>qbit-monitor</title>
+<link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">qb</span>
+    <h1>qbit-monitor</h1>
+  </div>
+  <div class="header-right">
+    <div id="slotbar" class="slotbar hidden"></div>
+    <div id="instance-dots" class="instance-dots"></div>
+    <button id="btn-refresh" class="btn ghost" title="Refresh now">&#8635;</button>
+    <button id="btn-settings" class="btn ghost" title="Settings">&#9881;</button>
+  </div>
+</header>
+
+<nav id="tabs" class="tabs"></nav>
+
+<main id="view" class="view"></main>
+
+<footer class="foot">
+  <span id="foot-status"></span>
+</footer>
+
+<!-- Settings dialog -->
+<dialog id="settingsDialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2>Slot &amp; poll settings</h2>
+    <label>Max slots
+      <input type="range" id="set-slots" min="50" max="200" step="1" />
+      <span id="set-slots-val" class="range-val"></span>
+    </label>
+    <label>Seed hours before a slot frees
+      <input type="number" id="set-seed" min="1" step="0.5" />
+    </label>
+    <label>Poll interval (seconds)
+      <input type="number" id="set-poll" min="5" step="5" />
+    </label>
+    <label>RSS scan interval (minutes)
+      <input type="number" id="set-rss" min="1" step="1" />
+    </label>
+    <div class="dialog-actions">
+      <button type="button" id="set-save" class="btn primary">Save</button>
+      <button type="button" class="btn" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Instance dialog -->
+<dialog id="instanceDialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2>Instance</h2>
+    <input type="hidden" id="inst-id" />
+    <label>Name <input type="text" id="inst-name" placeholder="Instance 1" /></label>
+    <label>URL <input type="text" id="inst-url" placeholder="http://192.168.0.15:8081" /></label>
+    <label>Username <input type="text" id="inst-user" autocomplete="off" /></label>
+    <label>Password <input type="password" id="inst-pass" autocomplete="new-password" /></label>
+    <div id="inst-test-result" class="test-result"></div>
+    <div class="dialog-actions">
+      <button type="button" id="inst-test" class="btn ghost">Test</button>
+      <button type="button" id="inst-save" class="btn primary">Save</button>
+      <button type="button" class="btn" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Feed dialog -->
+<dialog id="feedDialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2>RSS feed</h2>
+    <input type="hidden" id="feed-id" />
+    <label>Name <input type="text" id="feed-name" placeholder="My private tracker" /></label>
+    <label>Feed URL <input type="url" id="feed-url" placeholder="https://tracker/rss.php?passkey=..." /></label>
+    <label>Download to instance
+      <select id="feed-instance"></select>
+    </label>
+    <label>Save path (optional, overrides instance default)
+      <input type="text" id="feed-savepath" placeholder="/downloads/tracker" />
+    </label>
+    <label>Category (optional)
+      <input type="text" id="feed-category" placeholder="tracker" />
+    </label>
+    <label class="check"><input type="checkbox" id="feed-enabled" checked /> Enabled</label>
+    <div class="dialog-actions">
+      <button type="button" id="feed-save" class="btn primary">Save</button>
+      <button type="button" class="btn" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
