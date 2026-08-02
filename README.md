@@ -23,7 +23,7 @@ Think of it as a lightweight "tracker gatekeeper": it watches your private-track
 - **Default save folder** — torrents land in `/data/torrents` by default (configurable); feeds can override per-feed.
 - **Manual add + move** — add magnet links / `.torrent` URLs straight into the GUI (one per line, optional save path/category) **or upload one or more `.torrent` files from your machine** (multi-select supported, optional tracker), and move any torrent between instances from the table — files stay on disk, the destination re-adds at the same save path and rechecks.
 - **Persistent storage** — SQLite database and `config.json` live in `/data`, so your state survives restarts and updates.
-- **Web GUI included** — no external frontend build; a clean, sortable, tabbed interface is served directly by the app, with a **Seed left** column showing time until a slot frees.
+- **Web GUI included** — no external frontend build; a clean, sortable, tabbed interface is served directly by the app, with each torrent's tracker and accumulated seed time shown in the table.
 - **Multi-arch container** — `linux/amd64` and `linux/arm64` images published to GHCR on every release.
 
 ## Table of contents
@@ -61,11 +61,11 @@ The whole workflow lives in the web GUI — no config file editing required.
 
 | View | |
 |---|---|
-| **All torrents** — every instance in one sortable table, with a live slot bar and instance status dots | ![All torrents](screenshots/all.PNG) |
+| **All torrents** — every instance in one sortable table, with tracker, seed time, and instance status dots | ![All torrents](screenshots/all.PNG) |
 | **Per-instance view** — drill into a single qBittorrent instance | ![Per-instance view](screenshots/in1.PNG) |
 | **RSS feeds** — scanned items with state (pending / added / duplicate / error) | ![RSS feeds](screenshots/rssfeed.PNG) |
 | **Add / edit feed** — target instance, save path, autocompleted category, and tracker | ![Feed settings](screenshots/rsssettings.PNG) |
-| **Slot status** — used / free slots and queued RSS items | ![Slot status](screenshots/slot.PNG) |
+| **Trackers** — per-tracker slot caps, seed hours, and public toggle | ![Trackers](screenshots/slot.PNG) |
 
 ## Quick start (Docker)
 
@@ -241,10 +241,10 @@ dropped. Every feed pointing at the same tracker shares that tracker's cap.
 
 **When is a slot released?** After a torrent has been seeding for the tracker's
 `seed_hours` (default 72.5 h), or immediately if the torrent disappears from the
-client. The torrent table shows a **Seed left** column counting down until
-release.
+client. The torrent table's **Seed time** column shows each torrent's
+accumulated seeding time.
 
-**Where is my data stored?** SQLite (`state.db`) and `config.json` in `/data`
+**Where is my data stored?** SQLite (`app.db`) and `config.json` in `/data`
 (`DATA_DIR`). Back it up or mount it wherever your appdata lives.
 
 **What does "Move" do to my files?** Nothing — the files stay on disk. The
