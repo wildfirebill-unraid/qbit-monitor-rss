@@ -28,6 +28,7 @@ Think of it as a lightweight "tracker gatekeeper": it watches your private-track
 ## Table of contents
 
 - [Why qbit-monitor-rss?](#why-qbit-monitor-rss)
+- [Screenshots](#screenshots)
 - [Quick start (Docker)](#quick-start-docker)
 - [Configuration](#configuration)
   - [Settings](#settings)
@@ -50,6 +51,18 @@ Managing a private-tracker seedbox is usually a juggling act: multiple qBittorre
 3. It enforces a global slot budget so you never exceed your configured limit, releasing slots only once a torrent has seeded long enough (or disappears).
 
 Result: your private-tracker ratio grows, your slot count stays under control, and you never download the same release twice — across any number of instances.
+
+## Screenshots
+
+The whole workflow lives in the web GUI — no config file editing required.
+
+| View | |
+|---|---|
+| **All torrents** — every instance in one sortable table, with a live slot bar and instance status dots | ![All torrents](screenshots/all.PNG) |
+| **Per-instance view** — drill into a single qBittorrent instance | ![Per-instance view](screenshots/in1.PNG) |
+| **RSS feeds** — scanned items with state (pending / added / duplicate / error) | ![RSS feeds](screenshots/rssfeed.PNG) |
+| **Add / edit feed** — target instance, save path, autocompleted category, per-feed slot cap | ![Feed settings](screenshots/rsssettings.PNG) |
+| **Slot status** — used / free slots and queued RSS items | ![Slot status](screenshots/slot.PNG) |
 
 ## Quick start (Docker)
 
