@@ -36,6 +36,7 @@ Think of it as a lightweight "tracker gatekeeper": it watches your private-track
   - [qBittorrent instances](#qbittorrent-instances)
   - [RSS feeds](#rss-feeds)
 - [How an item flows](#how-an-item-flows)
+- [TODO](#todo)
 - [FAQ](#faq)
 - [Troubleshooting](#troubleshooting)
 - [REST API](#rest-api)
@@ -185,6 +186,13 @@ info-hash at the source's save path and category, then the source is dropped
 and rechecks them, so nothing is re-downloaded; the tracker carries over the
 torrent's accumulated seed time so your seed-clock credit is preserved. Moving
 requires both instances to be connected, and source/destination must differ.
+
+## TODO
+
+- [ ] **Create a torrent in the GUI** — select a folder from the mounted data
+      volume and create a `.torrent` file (needs a bencode encoder + a read-only
+      data-volume mount so the app can list candidate paths), then optionally
+      seed it via the target instance.
 
 ## FAQ
 
