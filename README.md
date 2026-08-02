@@ -152,9 +152,18 @@ slot budget (e.g. a cap of 200 slots across every feed from that tracker).
 
 | Setting | Default | Meaning |
 |---|---|---|
+| `url` | — | Tracker announce URL, used to identify torrents of this tracker |
+| `abbr` | — | Optional short name (e.g. `BTN`); shown in the UI and used to identify the tracker instead of the URL when set |
 | `max_slots` | 50 | Max concurrent active slots shared across all feeds of this tracker |
 | `seed_hours` | 72.5 | Seed time (hours) before a torrent frees its slot |
 | `public` | false | Public trackers have **no slot or seed limits** — torrents are added unconditionally and never occupy a slot |
+
+Trackers can be matched **automatically**: when a torrent already exists in a
+client, qbit-monitor-rss compares the client's per-torrent `tracker` URL against
+each configured tracker's `abbr` (substring match) or `url`, and tracks the
+torrent against that tracker's slot budget. This keeps already-seeded torrents
+occupying (and later releasing) slots correctly, even if they were added outside
+the app.
 
 A feed that has no `tracker_id` (or whose tracker was deleted) falls back to the
 defaults above: 50 slots / 72.5 h, non-public. Public-tracker torrents are
