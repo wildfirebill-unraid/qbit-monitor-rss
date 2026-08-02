@@ -279,3 +279,19 @@ table.torrents { width: 100%; border-collapse: collapse; font-size: 13px; }
   .torrent-table-wrap { max-height: none; }
   .cards { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------------------------ about */
+.about-card {
+  max-width: 560px; margin: 10px auto; padding: 24px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+}
+.about-card h1 { margin: 0 0 2px; font-size: 22px; }
+.about-card .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+.about-row {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 10px 0; border-top: 1px solid var(--border);
+  font-size: 13px; word-break: break-all;
+}
+.about-row span { color: var(--muted); }
+.about-row a { color: var(--accent); }
+.about-copy { color: var(--muted); font-size: 12px; margin-top: 18px; text-align: center; }

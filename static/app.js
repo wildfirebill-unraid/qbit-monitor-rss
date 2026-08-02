@@ -177,6 +177,7 @@ function renderTabs() {
     ${instTabs}
     <button class="tab ${rssActive ? "active" : ""}" data-tab="rss">RSS<span class="count">${rssCount}</span></button>
     <button class="tab ${S.activeTab === "settings" ? "active" : ""}" data-tab="settings">Settings</button>
+    <button class="tab ${S.activeTab === "about" ? "active" : ""}" data-tab="about">About</button>
   `;
   $("tabs").querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => { switchTab(t.dataset.tab); })
@@ -194,6 +195,8 @@ function switchTab(tab) {
     view.innerHTML = `<div class="empty">Loading RSS\u2026</div>`;
   } else if (tab === "settings") {
     renderSettings();
+  } else if (tab === "about") {
+    renderAbout();
   }
 }
 
@@ -477,6 +480,29 @@ function renderSettings() {
     await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
     await pollState();
   });
+}
+
+/* ------------------------------------------------------------------ about */
+async function renderAbout() {
+  $("view").innerHTML = `<div class="empty">Loading\u2026</div>`;
+  let info;
+  try {
+    info = await api("/api/about");
+  } catch (e) {
+    $("view").innerHTML = `<div class="empty">Could not load about info.</div>`;
+    return;
+  }
+  $("view").innerHTML = `
+    <div class="about-card">
+      <h1>${esc(info.name)}</h1>
+      <div class="sub">v${esc(info.version)}</div>
+      <div class="about-row"><span>Creator</span><b>${esc(info.creator)}</b></div>
+      <div class="about-row"><span>Homepage</span><a href="${esc(info.repo_url)}" target="_blank" rel="noopener">${esc(info.repo_url)}</a></div>
+      <div class="about-row"><span>Issues</span><a href="${esc(info.issues_url)}" target="_blank" rel="noopener">${esc(info.issues_url)}</a></div>
+      <div class="about-row"><span>License</span><a href="LICENSE" target="_blank" rel="noopener">MIT</a></div>
+      <div class="about-copy">${esc(info.copyright)}</div>
+    </div>
+  `;
 }
 
 /* --------------------------------------------------------------- dialogs */

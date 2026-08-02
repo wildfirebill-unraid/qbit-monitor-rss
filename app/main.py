@@ -24,6 +24,13 @@ log = logging.getLogger("main")
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
+APP_NAME = "qbit-monitor-rss"
+APP_VERSION = "0.3.0-beta"
+APP_CREATOR = "wildfirebill"
+APP_REPO_URL = "https://github.com/wildfirebill-unraid/qbit-monitor-rss"
+APP_ISSUES_URL = APP_REPO_URL + "/issues"
+APP_COPYRIGHT = "© 2026 wildfirebill"
+
 cfg: dict = {}
 db: DB | None = None
 manager: Manager | None = None
@@ -112,6 +119,18 @@ async def api_torrents(instance: str = "all"):
 @app.get("/api/rss")
 async def api_rss():
     return manager.rss_view()
+
+
+@app.get("/api/about")
+async def api_about():
+    return {
+        "name": APP_NAME,
+        "version": APP_VERSION,
+        "creator": APP_CREATOR,
+        "repo_url": APP_REPO_URL,
+        "issues_url": APP_ISSUES_URL,
+        "copyright": APP_COPYRIGHT,
+    }
 
 
 # ----------------------------------------------------------------- settings
