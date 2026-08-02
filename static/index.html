@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>qbit-monitor</title>
+<link rel="icon" type="image/png" href="/static/icon.png" />
 <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
@@ -13,7 +14,6 @@
     <h1>qbit-monitor</h1>
   </div>
   <div class="header-right">
-    <div id="slotbar" class="slotbar hidden"></div>
     <div id="instance-dots" class="instance-dots"></div>
     <button id="btn-refresh" class="btn ghost" title="Refresh now">&#8635;</button>
     <button id="btn-settings" class="btn ghost" title="Settings">&#9881;</button>
@@ -31,14 +31,7 @@
 <!-- Settings dialog -->
 <dialog id="settingsDialog" class="dialog">
   <form method="dialog" class="dialog-inner">
-    <h2>Slot &amp; poll settings</h2>
-    <label>Max slots
-      <input type="range" id="set-slots" min="50" max="200" step="1" />
-      <span id="set-slots-val" class="range-val"></span>
-    </label>
-    <label>Seed hours before a slot frees
-      <input type="number" id="set-seed" min="1" step="0.5" />
-    </label>
+    <h2>Settings</h2>
     <label>Poll interval (seconds)
       <input type="number" id="set-poll" min="5" step="5" />
     </label>
@@ -90,12 +83,32 @@
       <input type="text" id="feed-category" list="feed-categories" placeholder="tracker" />
       <datalist id="feed-categories"></datalist>
     </label>
-    <label>Max slots (optional, defaults to the global cap)
-      <input type="number" id="feed-maxslots" min="1" placeholder="e.g. 200" />
+    <label>Tracker (slot / seed limits come from the tracker)
+      <select id="feed-tracker"></select>
     </label>
     <label class="check"><input type="checkbox" id="feed-enabled" checked /> Enabled</label>
     <div class="dialog-actions">
       <button type="button" id="feed-save" class="btn primary">Save</button>
+      <button type="button" class="btn" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Tracker dialog -->
+<dialog id="trackerDialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2>Tracker</h2>
+    <input type="hidden" id="tracker-id" />
+    <label>Name <input type="text" id="tracker-name" placeholder="e.g. BTN" /></label>
+    <label>Max slots (optional, shared across all feeds of this tracker; defaults to 50)
+      <input type="number" id="tracker-maxslots" min="1" placeholder="e.g. 200" />
+    </label>
+    <label>Seed hours before a slot frees (optional; defaults to 72.5)
+      <input type="number" id="tracker-seedhours" min="1" step="0.5" placeholder="e.g. 72.5" />
+    </label>
+    <label class="check"><input type="checkbox" id="tracker-public" /> Public tracker (no slot or seed limits)</label>
+    <div class="dialog-actions">
+      <button type="button" id="tracker-save" class="btn primary">Save</button>
       <button type="button" class="btn" data-close>Cancel</button>
     </div>
   </form>
@@ -118,6 +131,9 @@
       <input type="text" id="add-category" list="add-categories" placeholder="tv" />
       <datalist id="add-categories"></datalist>
     </label>
+    <label>Tracker (optional — private trackers count toward their slot cap)
+      <select id="add-tracker"></select>
+    </label>
     <div id="add-result" class="test-result"></div>
     <div class="dialog-actions">
       <button type="button" id="add-go" class="btn primary">Add</button>
@@ -130,8 +146,8 @@
 <dialog id="uploadDialog" class="dialog">
   <form method="dialog" class="dialog-inner">
     <h2>Add torrent</h2>
-    <label>Torrent file
-      <input type="file" id="upload-file" accept=".torrent,application/x-bittorrent" required />
+    <label>Torrent files (multi-select supported)
+      <input type="file" id="upload-file" accept=".torrent,application/x-bittorrent" multiple required />
     </label>
     <label>Download to instance
       <select id="upload-instance"></select>
@@ -142,6 +158,9 @@
     <label>Category (optional)
       <input type="text" id="upload-category" list="upload-categories" placeholder="tv" />
       <datalist id="upload-categories"></datalist>
+    </label>
+    <label>Tracker (optional — private trackers count toward their slot cap)
+      <select id="upload-tracker"></select>
     </label>
     <div id="upload-result" class="test-result"></div>
     <div class="dialog-actions">

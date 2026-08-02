@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
     db.connect()
     manager = Manager(cfg, db)
     await manager.start()
-    log.info("qbit-monitor started (max slots=%s, seed hours=%s)", cfg.get("max_slots"), cfg.get("seed_hours"))
+    log.info("qbit-monitor started (poll=%ss, rss=%sm)", cfg.get("poll_interval_seconds"), cfg.get("rss_scan_interval_minutes"))
     yield
     if manager:
         await manager.stop()
@@ -83,6 +83,14 @@ class InstanceIn(BaseModel):
     password: str = ""
 
 
+class TrackerIn(BaseModel):
+    id: int | None = None
+    name: str = ""
+    max_slots: int | None = Field(default=None, ge=1, le=1000)
+    seed_hours: float | None = Field(default=None, ge=1.0, le=24 * 30)
+    public: bool = False
+
+
 class FeedIn(BaseModel):
     id: int | None = None
     name: str = ""
@@ -90,13 +98,11 @@ class FeedIn(BaseModel):
     instance_id: int = 1
     savepath: str = ""
     category: str = ""
-    max_slots: int | None = None
+    tracker_id: int | None = None
     enabled: bool = True
 
 
 class SettingsIn(BaseModel):
-    max_slots: int | None = Field(default=None, ge=50, le=200)
-    seed_hours: float | None = Field(default=None, ge=1.0, le=24 * 30)
     poll_interval_seconds: int | None = Field(default=None, ge=5, le=3600)
     rss_scan_interval_minutes: int | None = Field(default=None, ge=1, le=1440)
     data_folder: str | None = None
@@ -106,6 +112,7 @@ class AddTorrentIn(BaseModel):
     urls: str = ""
     save_path: str = ""
     category: str = ""
+    tracker_id: int | None = None
 
 
 class MoveTorrentsIn(BaseModel):
@@ -218,10 +225,6 @@ async def api_update():
 @app.post("/api/settings")
 async def api_settings(body: SettingsIn):
     data = body.model_dump(exclude_none=True)
-    if "max_slots" in data:
-        cfg["max_slots"] = max(1, min(cfg.get("max_slots_limit", 200), data["max_slots"]))
-    if "seed_hours" in data:
-        cfg["seed_hours"] = data["seed_hours"]
     if "poll_interval_seconds" in data:
         cfg["poll_interval_seconds"] = data["poll_interval_seconds"]
     if "rss_scan_interval_minutes" in data:
@@ -293,23 +296,30 @@ async def api_instance_add(iid: int, body: AddTorrentIn):
     if not body.urls.strip():
         raise HTTPException(400, "urls is required")
     return await manager.add_torrent(
-        iid, body.urls.strip(), body.save_path.strip(), body.category.strip()
+        iid, body.urls.strip(), body.save_path.strip(), body.category.strip(),
+        tracker_id=body.tracker_id,
     )
 
 
 @app.post("/api/instances/{iid}/add-file")
 async def api_instance_add_file(
     iid: int,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     save_path: str = Form(""),
     category: str = Form(""),
+    tracker_id: str = Form(""),
 ):
-    data = await file.read()
-    if not data:
-        raise HTTPException(400, "empty file")
-    filename = file.filename or "upload.torrent"
+    entries: list[tuple[str, bytes]] = []
+    for f in files:
+        data = await f.read()
+        if not data:
+            continue
+        entries.append((f.filename or "upload.torrent", data))
+    if not entries:
+        raise HTTPException(400, "no valid files")
+    tid = int(tracker_id) if tracker_id not in ("", "null", "None") else None
     return await manager.add_torrent_file(
-        iid, data, filename, save_path.strip(), category.strip()
+        iid, entries, save_path.strip(), category.strip(), tracker_id=tid
     )
 
 
@@ -335,7 +345,7 @@ async def api_feed_save(body: FeedIn):
                 "instance_id": body.instance_id,
                 "savepath": body.savepath,
                 "category": body.category,
-                "max_slots": body.max_slots,
+                "tracker_id": body.tracker_id,
                 "enabled": body.enabled,
             }
         )
@@ -350,7 +360,7 @@ async def api_feed_save(body: FeedIn):
                 "instance_id": body.instance_id,
                 "savepath": body.savepath,
                 "category": body.category,
-                "max_slots": body.max_slots,
+                "tracker_id": body.tracker_id,
                 "enabled": body.enabled,
             }
         )
@@ -386,6 +396,48 @@ async def api_feed_scan(fid: int):
     if result.get("ok"):
         await manager._process_queue()
     return {"ok": True, "result": result}
+
+
+# ----------------------------------------------------------------- trackers
+@app.post("/api/trackers/save")
+async def api_tracker_save(body: TrackerIn):
+    if not body.name.strip():
+        raise HTTPException(400, "name is required")
+    if body.id is None:
+        new_id = max([t["id"] for t in cfg["trackers"]], default=0) + 1
+        cfg["trackers"].append(
+            {
+                "id": new_id,
+                "name": body.name.strip(),
+                "max_slots": body.max_slots,
+                "seed_hours": body.seed_hours,
+                "public": body.public,
+            }
+        )
+    else:
+        tracker = next((t for t in cfg["trackers"] if t["id"] == body.id), None)
+        if not tracker:
+            raise HTTPException(404, "tracker not found")
+        tracker.update(
+            {
+                "name": body.name.strip(),
+                "max_slots": body.max_slots,
+                "seed_hours": body.seed_hours,
+                "public": body.public,
+            }
+        )
+    save_cfg()
+    return {"ok": True, "trackers": manager.status()["trackers"]}
+
+
+@app.post("/api/trackers/{tid}/delete")
+async def api_tracker_delete(tid: int):
+    cfg["trackers"] = [t for t in cfg["trackers"] if t["id"] != tid]
+    for f in cfg["feeds"]:
+        if f.get("tracker_id") == tid:
+            f["tracker_id"] = None
+    save_cfg()
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------- rss items

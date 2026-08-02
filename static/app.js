@@ -21,6 +21,16 @@ function esc(s) {
   }[c]));
 }
 
+function trackerOptions() {
+  const trackers = S.state?.trackers || [];
+  const opts = [`<option value="">No tracker</option>`];
+  for (const t of trackers) {
+    const label = t.public ? `${t.name} (public)` : t.name;
+    opts.push(`<option value="${t.id}">${esc(label)}</option>`);
+  }
+  return opts.join("");
+}
+
 function fmtBytes(v) {
   if (!v && v !== 0) return "-";
   v = Number(v);
@@ -137,8 +147,6 @@ async function pollRss() {
 function renderHeader() {
   const s = S.state;
   if (!s) return;
-  const sl = s.slots;
-  const pct = sl.max ? Math.min(100, (sl.used / sl.max) * 100) : 0;
   const dots = s.instances
     .map(
       (i) => `<span class="inst-dot" title="${esc(i.url)}${i.error ? " \u2014 " + esc(i.error) : ""}">
@@ -148,14 +156,6 @@ function renderHeader() {
     )
     .join("");
   $("instance-dots").innerHTML = dots || `<span class="inst-dot"><i class="bad"></i>no instances</span>`;
-  const slotEl = $("slotbar");
-  slotEl.classList.toggle("hidden", !s.instances.length);
-  slotEl.innerHTML = `
-    <span>Slots <b>${sl.used}/${sl.max}</b></span>
-    <span class="bar"><i style="width:${pct}%"></i></span>
-    <span title="Seeding ${sl.seed_hours}h frees a slot">${sl.available} free</span>
-    ${sl.queue ? `<span class="q" title="RSS items waiting for a slot">&#9203; ${sl.queue}</span>` : ""}
-  `;
 }
 
 function renderTabs() {
@@ -213,10 +213,7 @@ function renderTorrents() {
   if (!S.showCompleted) list = list.filter((t) => (t.progress || 0) < 1);
 
   list.sort((a, b) => {
-    const seedHours = S.state?.slots?.seed_hours || 72.5;
-    const val = (t) => S.sortKey === "seed_left"
-      ? Math.max(0, seedHours * 3600 - (t.seeding_time || 0))
-      : t[S.sortKey];
+    const val = (t) => t[S.sortKey];
     const av = val(a), bv = val(b);
     if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * S.sortDir;
     return ((av ?? 0) - (bv ?? 0)) * S.sortDir;
@@ -228,13 +225,12 @@ function renderTorrents() {
   const cols = allTab
     ? `<th data-k="instance_name">Instance${arrow("instance_name")}</th>` : "";
   const actionTh = multiInst ? "<th>Actions</th>" : "";
-  const colspan = (allTab ? 9 : 8) + (multiInst ? 1 : 0);
+  const colspan = (allTab ? 7 : 6) + (multiInst ? 1 : 0);
 
   let rows;
   if (!list.length) {
     rows = `<tr><td colspan="${colspan}" class="empty">No torrents${q ? " matching \u201c" + esc(q) + "\u201d" : ""}</td></tr>`;
   } else {
-    const seedHours = S.state?.slots?.seed_hours || 72.5;
     rows = list.map((t) => {
       const name = t.name || t.hash || "";
       const prog = (t.progress || 0) * 100;
@@ -242,7 +238,6 @@ function renderTorrents() {
       const inst = allTab
         ? `<td><span class="inst-badge"><i style="background:${t.instance_connected ? "var(--green)" : "var(--red)"}"></i>${esc(t.instance_name)}</span></td>`
         : "";
-      const seedLeft = Math.max(0, seedHours * 3600 - ((t.seeding_time || 0)));
       const move = multiInst
         ? `<td><button class="btn sm ghost move-btn" data-move-hash="${esc(t.hash || "")}" data-move-from="${t.instance_id}">Move</button></td>`
         : "";
@@ -251,10 +246,8 @@ function renderTorrents() {
         <td class="name">${esc(name)}${cat}</td>
         <td class="num">${fmtBytes(t.size)}</td>
         <td><span class="prog"><span class="bar"><i style="width:${prog.toFixed(1)}%"></i></span><span>${prog.toFixed(1)}%</span></span></td>
-        <td>${stateBadge(t.state)}</td>
-        <td class="num">${fmtRatio(t.ratio)}</td>
+        <td>${t.tracker ? esc(t.tracker) : "-"}</td>
         <td class="num">${fmtDuration(t.seeding_time)}</td>
-        <td class="num" title="Remaining until ${seedHours}h seeding frees a slot">${fmtDuration(seedLeft)}</td>
         <td class="num">${fmtDate(t.added_on)}</td>
         ${move}
       </tr>`;
@@ -276,10 +269,8 @@ function renderTorrents() {
           <th data-k="name">Name${arrow("name")}</th>
           <th data-k="size">Size${arrow("size")}</th>
           <th data-k="progress">Progress${arrow("progress")}</th>
-          <th data-k="state">State${arrow("state")}</th>
-          <th data-k="ratio">Ratio${arrow("ratio")}</th>
+          <th data-k="tracker">Tracker${arrow("tracker")}</th>
           <th data-k="seeding_time">Seed time${arrow("seeding_time")}</th>
-          <th data-k="seed_left">Seed left${arrow("seed_left")}</th>
           <th data-k="added_on">Added${arrow("added_on")}</th>
           ${actionTh}
         </tr></thead>
@@ -366,10 +357,16 @@ function renderRss() {
 function feedCard(f) {
   const counts = { pending: 0, added: 0, duplicate: 0, error: 0, ignored: 0 };
   f.items.forEach((it) => { counts[it.state] = (counts[it.state] || 0) + 1; });
+  const tr = f.tracker;
+  const slotsInfo = tr && tr.public
+    ? `<span>Tracker: <b>public</b></span>`
+    : `<span>Tracker: <b>${tr ? esc(tr.name) : "default"}</b></span>
+       <span>Slots: <b>${tr && tr.max_slots ? tr.max_slots : 50}</b></span>
+       <span>Seed: <b>${tr && tr.seed_hours ? tr.seed_hours + "h" : "72.5h"}</b></span>`;
   const meta =
     `<div class="feed-meta">
       <span>Instance: <b>${esc(f.instance_name)}</b></span>
-      <span>Max slots: <b>${f.max_slots ? f.max_slots : "global"}</b></span>
+      ${slotsInfo}
       <span>Pending: <b>${counts.pending}</b></span>
       <span>Added: <b>${counts.added}</b></span>
       <span>Duplicate: <b>${counts.duplicate}</b></span>
@@ -442,21 +439,25 @@ function renderSettings() {
       </div>`).join("")
     : `<div class="card"><div class="empty" style="padding:12px">No instances configured.</div></div>`;
 
+  const trackerCards = (s.trackers || []).length
+    ? s.trackers.map((t) => `
+      <div class="card">
+        <h3>${esc(t.name)}</h3>
+        <div class="status-line">${t.public
+          ? "public \u00b7 no slot or seed limits"
+          : `${t.max_slots ? t.max_slots : 50} max slots \u00b7 seed ${t.seed_hours ? t.seed_hours + "h" : "72.5h"}`}
+        </div>
+        <div class="card-actions">
+          <button class="btn sm" data-tracker-edit="${t.id}">Edit</button>
+          <button class="btn sm danger" data-tracker-del="${t.id}">Delete</button>
+        </div>
+      </div>`).join("")
+    : `<div class="card"><div class="empty" style="padding:12px">No trackers configured \u2014 feeds use default limits (50 slots / 72.5h) until assigned to a tracker.</div></div>`;
+
   $("view").innerHTML = `
     <div class="set-grid">
       <div class="set-item">
-        <h3 style="margin:0 0 12px">Limited slots</h3>
-        <div class="range-row">
-          <input type="range" id="sl-slots" min="50" max="200" step="1" value="${set.max_slots}" />
-          <span class="range-val" id="sl-slots-val">${set.max_slots}</span>
-        </div>
-        <p style="color:var(--muted);font-size:12px;margin:6px 0 0">A torrent occupies a slot from when it is added until it has seeded for the hours below. Free slots are filled from the RSS queue.</p>
-      </div>
-      <div class="set-item">
-        <h3 style="margin:0 0 12px">Polling &amp; seeding</h3>
-        <label>Seed hours per slot
-          <input type="number" id="sl-seed" min="1" step="0.5" value="${set.seed_hours}" />
-        </label>
+        <h3 style="margin:0 0 12px">Polling &amp; downloading</h3>
         <label>Poll interval (s)
           <input type="number" id="sl-poll" min="5" step="5" value="${set.poll_interval_seconds}" />
         </label>
@@ -468,16 +469,30 @@ function renderSettings() {
         </label>
         <button class="btn primary" id="sl-save">Save settings</button>
       </div>
+      <div class="set-item">
+        <h3 style="margin:0 0 12px">Tracker limits</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0">Slot caps and seed hours belong to trackers, not feeds \u2014 all feeds of one tracker share its slot budget (e.g. 200 slots max across every feed from that tracker). A torrent occupies a slot from when it is added until it has seeded for that tracker&rsquo;s seed hours. Public trackers have no limits.</p>
+      </div>
     </div>
-    <h3 style="margin:4px 0 10px;font-size:14px">qBittorrent instances</h3>
+    <h3 style="margin:4px 0 10px;font-size:14px">Trackers</h3>
+    <div style="margin-bottom:14px"><button class="btn primary" id="tracker-add">+ Add tracker</button></div>
+    <div class="cards">${trackerCards}</div>
+    <h3 style="margin:18px 0 10px;font-size:14px">qBittorrent instances</h3>
     <div style="margin-bottom:14px"><button class="btn primary" id="inst-add">+ Add instance</button></div>
     <div class="cards">${instCards}</div>
   `;
 
-  const rng = $("sl-slots");
-  $("sl-slots-val").textContent = rng.value;
-  rng.addEventListener("input", () => { $("sl-slots-val").textContent = rng.value; });
-
+  $("tracker-add").addEventListener("click", () => openTrackerDialog());
+  document.querySelectorAll("[data-tracker-edit]").forEach((b) =>
+    b.addEventListener("click", () => openTrackerDialog(Number(b.dataset.trackerEdit)))
+  );
+  document.querySelectorAll("[data-tracker-del]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Delete this tracker? Feeds that use it fall back to default limits.")) return;
+      await api(`/api/trackers/${b.dataset.trackerDel}/delete`, { method: "POST" });
+      await pollState();
+    })
+  );
   $("inst-add").addEventListener("click", () => openInstanceDialog());
   document.querySelectorAll("[data-inst-edit]").forEach((b) =>
     b.addEventListener("click", () => openInstanceDialog(Number(b.dataset.instEdit)))
@@ -491,8 +506,6 @@ function renderSettings() {
   );
   $("sl-save").addEventListener("click", async () => {
     const body = {
-      max_slots: Math.max(1, Math.min(200, Number(rng.value) || 50)),
-      seed_hours: Number($("sl-seed").value) || 72.5,
       poll_interval_seconds: Math.max(5, Number($("sl-poll").value) || 30),
       rss_scan_interval_minutes: Math.max(1, Number($("sl-rss").value) || 15),
       data_folder: $("sl-data").value.trim() || "/data/torrents",
@@ -613,12 +626,16 @@ function openFeedDialog(id) {
   $("feed-url").value = feed ? feed.url : "";
   $("feed-savepath").value = feed ? (feed.savepath || "") : "";
   $("feed-category").value = feed ? (feed.category || "") : "";
-  $("feed-maxslots").value = feed && feed.max_slots ? feed.max_slots : "";
   $("feed-enabled").checked = feed ? feed.enabled : true;
   const sel = $("feed-instance");
   sel.innerHTML = (S.state.instances || [])
     .map((i) => `<option value="${i.id}" ${feed && feed.instance_id === i.id ? "selected" : ""}>${esc(i.name)}</option>`)
     .join("") || `<option value="0">no instances \u2014 add one first</option>`;
+  const trSel = $("feed-tracker");
+  trSel.innerHTML = `<option value="">No tracker (default 50 slots / 72.5h)</option>` +
+    (S.state.trackers || [])
+      .map((t) => `<option value="${t.id}" ${feed && feed.tracker_id === t.id ? "selected" : ""}>${esc(t.name)}${t.public ? " (public)" : ""}</option>`)
+      .join("");
 
   const fillCategories = () => {
     const dl = $("feed-categories");
@@ -644,12 +661,39 @@ function openFeedDialog(id) {
         instance_id: instId,
         savepath: $("feed-savepath").value.trim(),
         category: $("feed-category").value.trim(),
-        max_slots: $("feed-maxslots").value ? Number($("feed-maxslots").value) : null,
+        tracker_id: trSel.value ? Number(trSel.value) : null,
         enabled: $("feed-enabled").checked,
       }),
     });
     dlg.close();
     await Promise.all([pollRss(), pollState()]);
+  };
+}
+
+function openTrackerDialog(id) {
+  const dlg = $("trackerDialog");
+  const tr = id ? (S.state.trackers || []).find((t) => t.id === id) : null;
+  $("tracker-id").value = tr ? tr.id : "";
+  $("tracker-name").value = tr ? tr.name : "";
+  $("tracker-maxslots").value = tr && tr.max_slots ? tr.max_slots : "";
+  $("tracker-seedhours").value = tr && tr.seed_hours ? tr.seed_hours : "";
+  $("tracker-public").checked = tr ? tr.public : false;
+  dlg.showModal();
+
+  $("tracker-save").onclick = async () => {
+    if (!$("tracker-name").value.trim()) { alert("Name is required"); return; }
+    await api("/api/trackers/save", {
+      method: "POST",
+      body: JSON.stringify({
+        id: $("tracker-id").value ? Number($("tracker-id").value) : null,
+        name: $("tracker-name").value.trim(),
+        max_slots: $("tracker-maxslots").value ? Number($("tracker-maxslots").value) : null,
+        seed_hours: $("tracker-seedhours").value ? Number($("tracker-seedhours").value) : null,
+        public: $("tracker-public").checked,
+      }),
+    });
+    dlg.close();
+    await Promise.all([pollState()]);
   };
 }
 
@@ -666,6 +710,7 @@ function openAddDialog(preferredInstanceId) {
   $("add-category").value = "";
   $("add-result").textContent = "";
   $("add-result").className = "test-result";
+  $("add-tracker").innerHTML = trackerOptions();
   const preferred = preferredInstanceId
     ?? (S.activeTab !== "all" ? Number(S.activeTab) : instances[0].id);
   sel.innerHTML = instances
@@ -694,6 +739,7 @@ function openAddDialog(preferredInstanceId) {
         urls: urls,
         save_path: $("add-savepath").value.trim(),
         category: $("add-category").value.trim(),
+        tracker_id: $("add-tracker").value ? Number($("add-tracker").value) : null,
       }),
     });
     res.classList.toggle("ok", r.ok);
@@ -721,6 +767,7 @@ function openUploadDialog(preferredInstanceId) {
   $("upload-category").value = "";
   $("upload-result").textContent = "";
   $("upload-result").className = "test-result";
+  $("upload-tracker").innerHTML = trackerOptions();
   const preferred = preferredInstanceId
     ?? (S.activeTab !== "all" ? Number(S.activeTab) : instances[0].id);
   sel.innerHTML = instances
@@ -743,9 +790,10 @@ function openUploadDialog(preferredInstanceId) {
     res.className = "test-result";
     res.textContent = "Uploading\u2026";
     const fd = new FormData();
-    fd.append("file", file.files[0]);
+    for (const f of file.files) fd.append("files", f);
     fd.append("save_path", $("upload-savepath").value.trim());
     fd.append("category", $("upload-category").value.trim());
+    fd.append("tracker_id", $("upload-tracker").value || "");
     let r;
     try {
       const resp = await fetch(`/api/instances/${Number(sel.value)}/add-file`, { method: "POST", body: fd });
@@ -821,24 +869,16 @@ $("btn-settings").addEventListener("click", () => {
   const dlg = $("settingsDialog");
   const set = S.state?.settings;
   if (set) {
-    $("set-slots").value = set.max_slots;
-    $("set-slots-val").textContent = set.max_slots;
-    $("set-seed").value = set.seed_hours;
     $("set-poll").value = set.poll_interval_seconds;
     $("set-rss").value = set.rss_scan_interval_minutes;
     $("set-data").value = set.data_folder || "";
   }
   dlg.showModal();
 });
-$("set-slots").addEventListener("input", () => {
-  $("set-slots-val").textContent = $("set-slots").value;
-});
 $("set-save").addEventListener("click", async () => {
   await api("/api/settings", {
     method: "POST",
     body: JSON.stringify({
-      max_slots: Math.max(1, Math.min(200, Number($("set-slots").value) || 50)),
-      seed_hours: Number($("set-seed").value) || 72.5,
       poll_interval_seconds: Math.max(5, Number($("set-poll").value) || 30),
       rss_scan_interval_minutes: Math.max(1, Number($("set-rss").value) || 15),
       data_folder: $("set-data").value.trim() || "/data/torrents",

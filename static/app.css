@@ -49,27 +49,6 @@ html, body {
 }
 .header-right { display: flex; align-items: center; gap: 12px; }
 
-.slotbar {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12px; color: var(--muted);
-  background: var(--panel2); border: 1px solid var(--border);
-  padding: 5px 10px; border-radius: 8px;
-}
-.slotbar .bar {
-  width: 90px; height: 6px; background: #0b0f14;
-  border: 1px solid var(--border); border-radius: 3px; overflow: hidden;
-}
-.slotbar .bar i {
-  display: block; height: 100%;
-  background: linear-gradient(90deg, var(--green), #2ea043);
-  transition: width .3s;
-}
-.slotbar b { color: var(--text); font-variant-numeric: tabular-nums; }
-.slotbar .q {
-  background: var(--purple); color: #fff; border-radius: 99px;
-  font-size: 11px; padding: 1px 8px;
-}
-
 .instance-dots { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .inst-dot {
   display: flex; align-items: center; gap: 6px;
@@ -222,9 +201,6 @@ table.torrents { width: 100%; border-collapse: collapse; font-size: 13px; }
   background: var(--panel2); border: 1px solid var(--border); color: var(--text);
   padding: 8px 10px; border-radius: 8px; font-size: 13px;
 }
-.range-row { display: flex; align-items: center; gap: 12px; }
-.range-row input[type=range] { flex: 1; }
-.range-val { font-family: var(--mono); color: var(--text); min-width: 44px; text-align: right; }
 
 .status-line { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; }
 .status-line i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }

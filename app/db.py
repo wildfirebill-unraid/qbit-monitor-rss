@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS tracked_torrents (
     instance_id      INTEGER,
     title            TEXT,
     feed_id          INTEGER,
+    tracker_id       INTEGER,
     added_at         REAL,
     slot_released    INTEGER DEFAULT 0,
     last_seed_seconds REAL DEFAULT 0,
@@ -57,6 +58,11 @@ class DB:
         # migrations for pre-existing databases
         try:
             self._conn.execute("ALTER TABLE seen_items ADD COLUMN torrent_url TEXT")
+            self._conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        try:
+            self._conn.execute("ALTER TABLE tracked_torrents ADD COLUMN tracker_id INTEGER")
             self._conn.commit()
         except sqlite3.OperationalError:
             pass  # column already exists
@@ -168,12 +174,12 @@ class DB:
         )
         self._conn.commit()
 
-    def track_torrent(self, info_hash, instance_id, title, feed_id):
+    def track_torrent(self, info_hash, instance_id, title, feed_id, slot_released=0, tracker_id=None):
         self._execute(
             "INSERT OR IGNORE INTO tracked_torrents "
-            "(hash, instance_id, title, feed_id, added_at, slot_released, last_seen_at) "
-            "VALUES (?,?,?,?,?,0,?)",
-            (info_hash, instance_id, title, feed_id, time.time(), time.time()),
+            "(hash, instance_id, title, feed_id, tracker_id, added_at, slot_released, last_seen_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (info_hash, instance_id, title, feed_id, tracker_id, time.time(), slot_released, time.time()),
         )
         self._conn.commit()
 
@@ -205,13 +211,14 @@ class DB:
             )
             self._execute(
                 "INSERT OR REPLACE INTO tracked_torrents "
-                "(hash, instance_id, title, feed_id, added_at, slot_released, last_seed_seconds, last_seen_at) "
-                "VALUES (?,?,?,?,?,?,?,?)",
+                "(hash, instance_id, title, feed_id, tracker_id, added_at, slot_released, last_seed_seconds, last_seen_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     info_hash,
                     to_id,
                     row["title"],
                     row["feed_id"],
+                    row["tracker_id"],
                     row["added_at"],
                     row["slot_released"],
                     row["last_seed_seconds"],
@@ -233,10 +240,33 @@ class DB:
         )
         return cur.fetchone()["c"]
 
-    def slots_in_use_for_feed(self, feed_id) -> int:
+    def slots_in_use_for_feeds(self, feed_ids) -> int:
+        """Count occupied slots across a set of feeds (a tracker's feeds)."""
+        if not feed_ids:
+            return 0
+        q = ",".join("?" * len(feed_ids))
         cur = self._execute(
-            "SELECT COUNT(*) AS c FROM tracked_torrents "
-            "WHERE slot_released=0 AND feed_id=?",
-            (feed_id,),
+            f"SELECT COUNT(*) AS c FROM tracked_torrents "
+            f"WHERE slot_released=0 AND feed_id IN ({q})",
+            tuple(feed_ids),
+        )
+        return cur.fetchone()["c"]
+
+    def slots_in_use_for_tracker(self, tracker_id: int, feed_ids) -> int:
+        """Count occupied slots for a tracker: torrents added via any of its
+        feeds, plus torrents added manually and assigned to the tracker."""
+        if not feed_ids:
+            q = ""
+            cur = self._execute(
+                "SELECT COUNT(*) AS c FROM tracked_torrents "
+                "WHERE slot_released=0 AND tracker_id=?",
+                (tracker_id,),
+            )
+            return cur.fetchone()["c"]
+        q = ",".join("?" * len(feed_ids))
+        cur = self._execute(
+            f"SELECT COUNT(*) AS c FROM tracked_torrents "
+            f"WHERE slot_released=0 AND (feed_id IN ({q}) OR tracker_id=?)",
+            tuple(feed_ids) + (tracker_id,),
         )
         return cur.fetchone()["c"]

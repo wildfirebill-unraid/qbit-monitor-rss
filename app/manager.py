@@ -98,13 +98,58 @@ class Manager:
                 cache["error"] = str(exc)
         self._update_tracked()
 
+    def _tracker_for_feed(self, feed: dict):
+        """Resolve the tracker config a feed belongs to, or None when unassigned."""
+        if not feed:
+            return None
+        tid = feed.get("tracker_id")
+        if tid is None:
+            return None
+        return self._tracker_by_id(tid)
+
+    def _tracker_by_id(self, tid):
+        return next(
+            (tr for tr in self.config.get("trackers", []) if tr["id"] == tid), None
+        )
+
+    def _tracker_seed_hours(self, tracker: dict) -> float:
+        val = tracker.get("seed_hours") if tracker else None
+        if val:
+            return float(val)
+        return 72.5
+
+    def _tracker_slot_limit(self, tracker: dict) -> int:
+        val = tracker.get("max_slots") if tracker else None
+        if val:
+            return int(val)
+        return 50
+
+    def _feeds_for_tracker(self, tracker: dict) -> list[int]:
+        """All feed ids sharing a tracker's slot budget."""
+        if not tracker:
+            return []
+        return [
+            f["id"]
+            for f in self.config.get("feeds", [])
+            if f.get("tracker_id") == tracker["id"]
+        ]
+
     def _update_tracked(self):
         """Release slots for torrents that have seeded long enough or vanished."""
-        threshold = self.config.get("seed_hours", 72.5) * 3600.0
+        feeds_by_id = {f["id"]: f for f in self.config.get("feeds", [])}
         now = time.time()
         for t in self.db.tracked_all():
             if t["slot_released"]:
                 continue
+            feed = feeds_by_id.get(t["feed_id"]) if t["feed_id"] is not None else None
+            tracker = self._tracker_for_feed(feed) or (
+                self._tracker_by_id(t["tracker_id"]) if t["tracker_id"] is not None else None
+            )
+            if tracker and tracker.get("public"):
+                # public-tracker torrents never occupy a slot
+                self.db.update_tracked(t["hash"], t["instance_id"], slot_released=1)
+                continue
+            threshold = self._tracker_seed_hours(tracker) * 3600.0
             cache = self.instance_cache.get(t["instance_id"])
             found = None
             if cache:
@@ -191,30 +236,31 @@ class Manager:
         return False
 
     # ------------------------------------------------------------ add queue
-    def _feed_slot_limit(self, feed: dict) -> int:
-        """Per-feed slot cap; falls back to the global cap when unset."""
-        val = feed.get("max_slots")
-        if val:
-            return int(val)
-        return int(self.config.get("max_slots", 50))
-
     async def _process_queue(self):
-        max_slots = int(self.config.get("max_slots", 50))
+        feeds_by_id = {f["id"]: f for f in self.config.get("feeds", [])}
         enabled_ids = [
             f["id"] for f in self.config.get("feeds", []) if f.get("enabled", True)
         ]
-        feeds_by_id = {f["id"]: f for f in self.config.get("feeds", [])}
         for _ in range(200):  # safety cap
-            if self.db.slots_in_use() >= max_slots:
-                return
             pending = self.db.pending_items(feed_ids=enabled_ids)
             if not pending:
                 return
-            item = next(
-                (i for i in pending if self._feed_slot_limit(feeds_by_id.get(i["feed_id"], {}))
-                 > self.db.slots_in_use_for_feed(i["feed_id"])),
-                None,
-            )
+            item = None
+            for i in pending:
+                feed = feeds_by_id.get(i["feed_id"], {})
+                tracker = self._tracker_for_feed(feed)
+                if tracker and tracker.get("public"):
+                    item = i
+                    break
+                limit = self._tracker_slot_limit(tracker)
+                budget = self._feeds_for_tracker(tracker) or [i["feed_id"]]
+                if tracker:
+                    used = self.db.slots_in_use_for_tracker(tracker["id"], budget)
+                else:
+                    used = self.db.slots_in_use_for_feeds(budget)
+                if limit > used:
+                    item = i
+                    break
             if item is None:
                 return
             result = await self._try_add(item)
@@ -257,7 +303,7 @@ class Manager:
         filename = f"{info_hash[:16]}.torrent"
         save_path = feed.get("savepath", "") or self.config.get("data_folder", "/data/torrents")
         resp = await client.add_file(
-            torrent_bytes, filename, save_path, feed.get("category", "")
+            [(filename, torrent_bytes)], save_path, feed.get("category", "")
         )
         resp_l = resp.lower()
         if "duplicate" in resp_l:
@@ -276,7 +322,11 @@ class Manager:
             return "error"
 
         self.db.record_added(info_hash, instance["id"], item["title"])
-        self.db.track_torrent(info_hash, instance["id"], item["title"], feed["id"])
+        tracker = self._tracker_for_feed(feed)
+        self.db.track_torrent(
+            info_hash, instance["id"], item["title"], feed["id"],
+            slot_released=1 if (tracker and tracker.get("public")) else 0,
+        )
         self.db.update_item(
             item["guid"], state="added", info_hash=info_hash, torrent_hash=info_hash,
             error=None,
@@ -293,8 +343,49 @@ class Manager:
         return False
 
     # ------------------------------------------------------- manual actions
+    @staticmethod
+    def _btih_from_magnet(url: str) -> str | None:
+        """Extract a normalized 40-char info hash from a magnet link, if any."""
+        import re as _re
+        m = _re.search(r"[?&]xt=urn:btih:([A-Za-z0-9]+)", url)
+        if not m:
+            return None
+        tok = m.group(1)
+        if len(tok) == 40:
+            return tok.lower()
+        if len(tok) == 32:  # base32 btih
+            try:
+                import base64
+                return base64.b32decode(tok.upper()).hex().lower()
+            except Exception:
+                return None
+        return None
+
+    async def _track_manual(self, instance_id: int, tracker_id: int,
+                            hashes: list[tuple[str, str]]) -> None:
+        """Register manually added torrents against a tracker so they occupy a
+        slot (unless the tracker is public)."""
+        tracker = self._tracker_by_id(tracker_id)
+        if tracker is None:
+            return
+        slot_released = 1 if tracker.get("public") else 0
+        for info_hash, title in hashes:
+            if not info_hash:
+                continue
+            self.db.record_added(info_hash, instance_id, title, source="manual")
+            self.db.track_torrent(
+                info_hash, instance_id, title, None,
+                slot_released=slot_released, tracker_id=tracker_id,
+            )
+            log.info(
+                "Manual %s -> instance %s tracked against tracker %s%s",
+                title, instance_id, tracker.get("name", tracker_id),
+                " (public, no slot)" if slot_released else " (slot taken)",
+            )
+
     async def add_torrent(
-        self, instance_id: int, urls: str, save_path: str = "", category: str = ""
+        self, instance_id: int, urls: str, save_path: str = "", category: str = "",
+        tracker_id: int | None = None,
     ) -> dict:
         """Add one or more magnet links / .torrent URLs to an instance."""
         inst = self._instance_config(instance_id)
@@ -305,24 +396,44 @@ class Manager:
             return {"ok": False, "error": "client not initialised"}
         resp = await client.add_url(urls, save_path, category)
         if resp == "Ok.":
+            if tracker_id is not None:
+                hashes = []
+                for line in urls.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.lower().startswith("magnet:"):
+                        hashes.append((self._btih_from_magnet(line), line))
+                    elif line.lower().startswith(("http://", "https://")):
+                        data = await rssmod.download_torrent(line)
+                        h = hex_info_hash(data) if data else None
+                        hashes.append((h, line))
+                await self._track_manual(instance_id, tracker_id, hashes)
             return {"ok": True, "resp": resp}
         if resp.startswith("error:") or resp == "auth failed":
             return {"ok": False, "error": resp}
         return {"ok": True, "resp": resp}
 
     async def add_torrent_file(
-        self, instance_id: int, torrent_bytes: bytes, filename: str,
-        save_path: str = "", category: str = "",
+        self, instance_id: int, files: list[tuple[str, bytes]],
+        save_path: str = "", category: str = "", tracker_id: int | None = None,
     ) -> dict:
-        """Upload a local .torrent file to an instance."""
+        """Upload one or more local .torrent files to an instance."""
         inst = self._instance_config(instance_id)
         if inst is None:
             return {"ok": False, "error": "instance not found"}
         client = self.clients.get(instance_id)
         if client is None:
             return {"ok": False, "error": "client not initialised"}
-        resp = await client.add_file(torrent_bytes, filename, save_path, category)
+        resp = await client.add_file(files, save_path, category)
         if resp == "Ok.":
+            if tracker_id is not None:
+                hashes = []
+                for filename, payload in files:
+                    h = hex_info_hash(payload)
+                    if h:
+                        hashes.append((h, filename))
+                await self._track_manual(instance_id, tracker_id, hashes)
             return {"ok": True, "resp": resp}
         if resp.startswith("error:") or resp == "auth failed":
             return {"ok": False, "error": resp}
@@ -392,26 +503,19 @@ class Manager:
                     "upload_speed": sum(t.get("upspeed", 0) or 0 for t in tor),
                 }
             )
-        used = self.db.slots_in_use()
-        max_slots = self.config.get("max_slots", 50)
-        pending = len(
-            self.db.pending_items(
-                feed_ids=[f["id"] for f in self.config.get("feeds", []) if f.get("enabled", True)]
-            )
-        )
         return {
             "instances": instances,
-            "slots": {
-                "max": max_slots,
-                "used": used,
-                "available": max(0, max_slots - used),
-                "seed_hours": self.config.get("seed_hours", 72.5),
-                "queue": pending,
-            },
+            "trackers": [
+                {
+                    "id": tr["id"],
+                    "name": tr.get("name", f"Tracker {tr['id']}"),
+                    "max_slots": tr.get("max_slots"),
+                    "seed_hours": tr.get("seed_hours"),
+                    "public": bool(tr.get("public")),
+                }
+                for tr in self.config.get("trackers", [])
+            ],
             "settings": {
-                "max_slots": max_slots,
-                "max_slots_limit": self.config.get("max_slots_limit", 200),
-                "seed_hours": self.config.get("seed_hours", 72.5),
                 "poll_interval_seconds": self.config.get("poll_interval_seconds", 30),
                 "rss_scan_interval_minutes": self.config.get("rss_scan_interval_minutes", 15),
                 "data_folder": self.config.get("data_folder", "/data/torrents"),
@@ -419,6 +523,16 @@ class Manager:
         }
 
     def torrents(self, instance_id=None) -> list[dict]:
+        feeds_by_id = {f["id"]: f for f in self.config.get("feeds", [])}
+        trackers_by_id = {tr["id"]: tr for tr in self.config.get("trackers", [])}
+        feed_by_hash = {}
+        tracker_by_hash = {}
+        for row in self.db.tracked_all():
+            key = (row["hash"].lower(), row["instance_id"])
+            if row["feed_id"] is not None:
+                feed_by_hash[key] = row["feed_id"]
+            if row["tracker_id"] is not None:
+                tracker_by_hash[key] = row["tracker_id"]
         out = []
         for inst in self.config.get("instances", []):
             if instance_id is not None and inst["id"] != instance_id:
@@ -429,6 +543,17 @@ class Manager:
                 row["instance_id"] = inst["id"]
                 row["instance_name"] = inst.get("name", f"Instance {inst['id']}")
                 row["instance_connected"] = bool(cache.get("connected"))
+                key = ((t.get("hash") or "").lower(), inst["id"])
+                fid = feed_by_hash.get(key)
+                feed = feeds_by_id.get(fid) if fid else None
+                tracker = trackers_by_id.get(feed.get("tracker_id")) if feed else None
+                if tracker is None:
+                    tid = tracker_by_hash.get(key)
+                    tracker = trackers_by_id.get(tid) if tid else None
+                row["tracker"] = (
+                    tracker.get("name")
+                    if tracker else (feed.get("name", "") if feed else "")
+                )
                 out.append(row)
         return out
 
@@ -441,6 +566,7 @@ class Manager:
                 (i for i in self.config.get("instances", []) if i["id"] == feed["instance_id"]),
                 None,
             )
+            tracker = self._tracker_for_feed(feed)
             feeds_out.append(
                 {
                     "id": fid,
@@ -450,7 +576,20 @@ class Manager:
                     "instance_name": instance.get("name") if instance else "?",
                     "savepath": feed.get("savepath", ""),
                     "category": feed.get("category", ""),
-                    "max_slots": feed.get("max_slots"),
+                    "tracker_id": feed.get("tracker_id"),
+                    "tracker": (
+                        {
+                            "id": tracker["id"],
+                            "name": tracker.get("name", ""),
+                            "max_slots": tracker.get("max_slots"),
+                            "seed_hours": tracker.get("seed_hours"),
+                            "public": bool(tracker.get("public")),
+                        }
+                        if tracker else None
+                    ),
+                    "max_slots": tracker.get("max_slots") if tracker else None,
+                    "seed_hours": tracker.get("seed_hours") if tracker else None,
+                    "public": bool(tracker.get("public")) if tracker else False,
                     "enabled": bool(feed.get("enabled", True)),
                     "last_scan": feed.get("last_scan"),
                     "items": items,

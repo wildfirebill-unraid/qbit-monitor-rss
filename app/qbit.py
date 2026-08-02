@@ -136,12 +136,11 @@ class QBittorrent:
 
     async def add_file(
         self,
-        torrent_bytes: bytes,
-        filename: str,
+        files: list[tuple[str, bytes]],
         save_path: str = "",
         category: str = "",
     ) -> str:
-        """Upload a .torrent file. Returns a short status string."""
+        """Upload one or more .torrent files. Returns a short status string."""
         if not await self._ensure_auth():
             return "auth failed"
         data = {}
@@ -154,13 +153,10 @@ class QBittorrent:
                 "POST",
                 "/api/v2/torrents/add",
                 data=data,
-                files={
-                    "torrents": (
-                        filename,
-                        torrent_bytes,
-                        "application/x-bittorrent",
-                    )
-                },
+                files=[
+                    ("torrents", (name, payload, "application/x-bittorrent"))
+                    for name, payload in files
+                ],
             )
             return (r.text or "").strip()
         except httpx.HTTPError as exc:

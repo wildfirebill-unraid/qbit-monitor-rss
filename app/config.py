@@ -5,14 +5,11 @@ import json
 import os
 
 DEFAULTS = {
-    "max_slots": 50,
-    "min_slots": 50,
-    "max_slots_limit": 200,
-    "seed_hours": 72.5,
     "poll_interval_seconds": 30,
     "rss_scan_interval_minutes": 15,
     "data_folder": "/data/torrents",
     "instances": [],
+    "trackers": [],
     "feeds": [],
 }
 
@@ -40,8 +37,6 @@ def load_config(path: str | None = None) -> dict:
         data = {}
     cfg = default_config()
     cfg.update(data)
-    # normalize slots to the allowed range
-    cfg["max_slots"] = max(1, min(cfg.get("max_slots_limit", 200), int(cfg.get("max_slots", 50))))
     return cfg
 
 

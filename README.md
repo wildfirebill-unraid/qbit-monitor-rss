@@ -10,18 +10,18 @@
 
 ![qbit-monitor-rss social preview](https://raw.githubusercontent.com/wildfirebill-unraid/qbit-monitor-rss/main/.github/social-preview.png)
 
-**qbit-monitor-rss** is a self-hosted, Dockerized web app for [Unraid](https://unraid.net) (and any other Docker host) that centralizes **multiple qBittorrent instances** and automatically grabs new releases from **private-tracker RSS feeds** — one dashboard, one configurable torrent slot budget, zero cross-instance duplicates.
+**qbit-monitor-rss** is a self-hosted, Dockerized web app for [Unraid](https://unraid.net) (and any other Docker host) that centralizes **multiple qBittorrent instances** and automatically grabs new releases from **private-tracker RSS feeds** — one dashboard, one configurable torrent slot budget per tracker, zero cross-instance duplicates.
 
-Think of it as a lightweight "tracker gatekeeper": it watches your private-tracker RSS feeds, filters already-downloaded content by **info-hash and normalized title**, and adds only genuinely new torrents to the qBittorrent instance you choose — all under a global **slot cap** (with an optional per-feed override) and automatic slot release after a seed-time requirement is met.
+Think of it as a lightweight "tracker gatekeeper": it watches your private-tracker RSS feeds, filters already-downloaded content by **info-hash and normalized title**, and adds only genuinely new torrents to the qBittorrent instance you choose — all under a per-tracker **slot cap** (all feeds of one tracker share that tracker's budget) and automatic slot release after a seed-time requirement is met.
 
 - **Multi-instance support** — watch any number of qBittorrent WebUI instances from a single UI (one tab each).
 - **Private-tracker friendly** — parse RSS 2.0 and Atom feeds, including `enclosure` and `<link href="...">` torrent downloads.
 - **No duplicates across feeds or instances** — info-hash check (already added + live client) plus normalized-title check.
-- **Configurable slot cap with per-feed overrides** — a global cap (default 50) plus an optional per-feed cap; slots are consumed on add and released after `seed_hours` of seeding (default 72.5 h) or when a torrent vanishes from the client.
+- **Configurable slot cap per tracker** — each tracker has its own slot cap (default 50) and seed-time requirement (default 72.5 h); every feed pointing at that tracker shares the same slot budget. Slots are consumed on add and released after `seed_hours` of seeding or when a torrent vanishes from the client.
 - **Automatic + manual scanning** — per-feed **Scan** button, a global force scan, and a scheduled scan every `rss_scan_interval_minutes`.
-- **Per-feed target routing** — each feed points at the instance it should add to, with optional save path, category (autocompleted from the instance's categories), and max slots.
+- **Per-feed target routing** — each feed points at the instance it should add to, with optional save path, category (autocompleted from the instance's categories), and the tracker whose slot budget it belongs to.
 - **Default save folder** — torrents land in `/data/torrents` by default (configurable); feeds can override per-feed.
-- **Manual add + move** — add magnet links / `.torrent` URLs straight into the GUI (one per line, optional save path/category) **or upload a `.torrent` file from your machine**, and move any torrent between instances from the table — files stay on disk, the destination re-adds at the same save path and rechecks.
+- **Manual add + move** — add magnet links / `.torrent` URLs straight into the GUI (one per line, optional save path/category) **or upload one or more `.torrent` files from your machine** (multi-select supported, optional tracker), and move any torrent between instances from the table — files stay on disk, the destination re-adds at the same save path and rechecks.
 - **Persistent storage** — SQLite database and `config.json` live in `/data`, so your state survives restarts and updates.
 - **Web GUI included** — no external frontend build; a clean, sortable, tabbed interface is served directly by the app, with a **Seed left** column showing time until a slot frees.
 - **Multi-arch container** — `linux/amd64` and `linux/arm64` images published to GHCR on every release.
@@ -34,6 +34,7 @@ Think of it as a lightweight "tracker gatekeeper": it watches your private-track
 - [Configuration](#configuration)
   - [Settings](#settings)
   - [qBittorrent instances](#qbittorrent-instances)
+  - [Trackers](#trackers)
   - [RSS feeds](#rss-feeds)
 - [How an item flows](#how-an-item-flows)
 - [TODO](#todo)
@@ -50,7 +51,7 @@ Managing a private-tracker seedbox is usually a juggling act: multiple qBittorre
 
 1. It watches every configured RSS feed and recognizes which items you have already fetched — by guid, by info-hash, and by normalized title.
 2. It only hands new, unique torrents to the qBittorrent instance you chose for that feed.
-3. It enforces a global slot budget so you never exceed your configured limit, releasing slots only once a torrent has seeded long enough (or disappears).
+3. It enforces each tracker's slot budget so you never exceed your configured limit, releasing slots only once a torrent has seeded long enough (or disappears).
 
 Result: your private-tracker ratio grows, your slot count stays under control, and you never download the same release twice — across any number of instances.
 
@@ -63,7 +64,7 @@ The whole workflow lives in the web GUI — no config file editing required.
 | **All torrents** — every instance in one sortable table, with a live slot bar and instance status dots | ![All torrents](screenshots/all.PNG) |
 | **Per-instance view** — drill into a single qBittorrent instance | ![Per-instance view](screenshots/in1.PNG) |
 | **RSS feeds** — scanned items with state (pending / added / duplicate / error) | ![RSS feeds](screenshots/rssfeed.PNG) |
-| **Add / edit feed** — target instance, save path, autocompleted category, per-feed slot cap | ![Feed settings](screenshots/rsssettings.PNG) |
+| **Add / edit feed** — target instance, save path, autocompleted category, and tracker | ![Feed settings](screenshots/rsssettings.PNG) |
 | **Slot status** — used / free slots and queued RSS items | ![Slot status](screenshots/slot.PNG) |
 
 ## Quick start (Docker)
@@ -118,13 +119,11 @@ also editable from the GUI — no file editing required for day-to-day use.
 
 | Setting | Default | Range | Meaning |
 |---|---|---|---|
-| `max_slots` | 50 | 50–200 | Concurrent active slots (cap on how many torrents are "using" a slot) |
-| `seed_hours` | 72.5 | — | Seed time (hours) before a slot is released |
 | `poll_interval_seconds` | 30 | 5–3600 | How often live torrent state is refreshed |
 | `rss_scan_interval_minutes` | 15 | 1–1440 | How often RSS feeds are scanned automatically |
 | `data_folder` | `/data/torrents` | — | Default save path used for feeds without a per-feed save path |
 
-Out-of-range `max_slots` values are rejected with HTTP 422 by the API; `config.json` also clamps on load. The `data_folder` setting only affects feeds that don't set their own save path.
+Slot caps and seed hours are **per tracker**, not global — see [Trackers](#trackers). The `data_folder` setting only affects feeds that don't set their own save path.
 
 ### qBittorrent instances
 
@@ -145,14 +144,32 @@ credentials. Two things to watch:
   connections; a persistent `login failed` or timeouts usually mean a provider
   policy, not an app issue.
 
+### Trackers
+
+Slot and seed limits belong to **trackers**, not feeds — because multiple feeds
+can come from the same tracker, all feeds of one tracker share that tracker's
+slot budget (e.g. a cap of 200 slots across every feed from that tracker).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `max_slots` | 50 | Max concurrent active slots shared across all feeds of this tracker |
+| `seed_hours` | 72.5 | Seed time (hours) before a torrent frees its slot |
+| `public` | false | Public trackers have **no slot or seed limits** — torrents are added unconditionally and never occupy a slot |
+
+A feed that has no `tracker_id` (or whose tracker was deleted) falls back to the
+defaults above: 50 slots / 72.5 h, non-public. Public-tracker torrents are
+tracked with `slot_released=1` so they never count toward any budget. Private
+feeds stay queued while their tracker's budget is full and retry automatically
+as slots free up.
+
 ### RSS feeds
 
-Each feed points at an RSS/Atom URL, a target instance, and optional save path,
-category, and max slots. The category field is autocompleted from the target
-instance's existing qBittorrent categories. If a feed has no save path, the
-global `data_folder` setting is used. If a feed has no `max_slots`, it shares
-the global slot budget; with a per-feed `max_slots` set, that feed can never
-occupy more slots than its own cap even when the global budget is free.
+Each feed points at an RSS/Atom URL, a target instance, an optional save path,
+category, and the tracker it belongs to. The category field is autocompleted
+from the target instance's existing qBittorrent categories. If a feed has no
+save path, the global `data_folder` setting is used. The feed's slot cap and
+seed-time requirement come entirely from its tracker (see
+[Trackers](#trackers)); feeds without a tracker use the built-in defaults.
 Scanning is manual (per-feed **Scan** button or the global force
 scan) and automatic every `rss_scan_interval_minutes`.
 
@@ -166,9 +183,10 @@ scan) and automatic every `rss_scan_interval_minutes`.
    - already added anywhere (hash in DB),
    - already present in any live client,
    - normalized title already tracked.
-4. If unique **and** a slot is free (both the global budget and, if set, the
-   feed's per-feed cap), the torrent is uploaded to the target
-   instance and the slot is marked used. If a cap is reached it stays queued.
+4. If unique **and** a slot is free in the item's tracker budget (public
+   trackers always pass), the torrent is uploaded to the target
+   instance and the slot is marked used. If the tracker's cap is reached it
+   stays queued.
 5. Every poll, torrents with `seeding_time >= seed_hours * 3600` (or that
    vanished from the client) release their slot, letting the queue advance.
 
@@ -176,11 +194,14 @@ scan) and automatic every `rss_scan_interval_minutes`.
 
 The **+ Add magnet** button (top of the torrents table) sends magnet links or
 `.torrent` URLs to a chosen instance — one per line, with optional save path and
-category. The **+ Add torrent** button uploads a local `.torrent` file from your
-machine to a chosen instance, also with optional save path and category.
+category. The **+ Add torrent** button uploads one or more local `.torrent`
+files from your machine to a chosen instance (multi-select supported), also
+with optional save path and category.
 
-Both go straight to the client and do *not* consume a tracked slot, so they're
-for one-off downloads you want outside the slot budget.
+Both go straight to the client. If you pick a private tracker in the dialog, the
+added torrents are tracked against that tracker's slot budget (just like RSS
+adds); if you leave the tracker unselected they are untracked, one-off
+downloads outside any budget.
 
 The **Move** button (per-row, shown when you have more than one instance)
 re-homes a torrent to another instance: the destination re-adds the same
@@ -214,13 +235,14 @@ everything already added *and* everything currently in any live client; and the
 normalized title is matched against tracked items. A release fetched from two
 different trackers therefore still resolves to one torrent.
 
-**What happens when the slot cap is reached?** New items stay queued and are
-retried automatically as slots free up. Nothing is silently dropped. A feed with
-its own `max_slots` setting is limited by that feed's cap *and* the global cap.
+**What happens when the slot cap is reached?** New items from that tracker stay
+queued and are retried automatically as slots free up. Nothing is silently
+dropped. Every feed pointing at the same tracker shares that tracker's cap.
 
-**When is a slot released?** After a torrent has been seeding for `seed_hours`
-(default 72.5 h), or immediately if the torrent disappears from the client. The
-torrent table shows a **Seed left** column counting down until release.
+**When is a slot released?** After a torrent has been seeding for the tracker's
+`seed_hours` (default 72.5 h), or immediately if the torrent disappears from the
+client. The torrent table shows a **Seed left** column counting down until
+release.
 
 **Where is my data stored?** SQLite (`state.db`) and `config.json` in `/data`
 (`DATA_DIR`). Back it up or mount it wherever your appdata lives.
@@ -232,9 +254,11 @@ without deleting its data. Seed time carried over in the tracker keeps the slot
 clock accurate.
 
 **Can I download something outside the RSS slot budget?** Yes — use the
-**+ Add magnet** or **+ Add torrent** button. Manually added torrents go straight
-to the client and don't reserve a tracked slot, so they never wait behind the
-queue or count toward the cap.
+**+ Add magnet** or **+ Add torrent** button. If you leave the tracker
+unselected, manually added torrents go straight to the client and don't reserve
+a tracked slot, so they never wait behind the queue or count toward any cap. If
+you do select a tracker, they're tracked against that tracker's slot budget
+just like RSS adds.
 
 ## Troubleshooting
 
@@ -252,10 +276,11 @@ queue or count toward the cap.
 - `GET /api/state` — instances, slots, settings
 - `GET /api/torrents` — all torrents
 - `GET /api/rss` — feeds + items
-- `POST /api/settings` — update slots/seed/poll settings + `data_folder`
+- `POST /api/settings` — update poll / RSS scan / data-folder settings
 - `POST /api/instances/save` | `/test` | `/delete`
+- `POST /api/trackers/save` | `/{id}/delete`
 - `POST /api/instances/{id}/add` — add magnet links / `.torrent` URLs to an instance
-- `POST /api/instances/{id}/add-file` — upload a local `.torrent` file (multipart `file`, optional `save_path` / `category`)
+- `POST /api/instances/{id}/add-file` — upload one or more local `.torrent` files (multipart `files`, optional `save_path` / `category` / `tracker_id`)
 - `POST /api/torrents/move` — move torrents between instances (`from_instance`, `to_instance`, `hashes`)
 - `POST /api/feeds/save` | `/delete` | `/toggle` | `/{id}/scan`
 - `POST /api/rss/{guid}/action` — `ignore` / `retry` / `add-now`
