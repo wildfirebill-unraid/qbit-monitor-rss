@@ -25,7 +25,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 APP_NAME = "qbit-monitor-rss"
-APP_VERSION = "0.3.0-beta"
+APP_VERSION = os.environ.get("APP_VERSION") or "dev"
 APP_CREATOR = "wildfirebill"
 APP_REPO_URL = "https://github.com/wildfirebill-unraid/qbit-monitor-rss"
 APP_ISSUES_URL = APP_REPO_URL + "/issues"
