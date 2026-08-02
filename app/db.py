@@ -197,3 +197,11 @@ class DB:
             "SELECT COUNT(*) AS c FROM tracked_torrents WHERE slot_released=0"
         )
         return cur.fetchone()["c"]
+
+    def slots_in_use_for_feed(self, feed_id) -> int:
+        cur = self._execute(
+            "SELECT COUNT(*) AS c FROM tracked_torrents "
+            "WHERE slot_released=0 AND feed_id=?",
+            (feed_id,),
+        )
+        return cur.fetchone()["c"]

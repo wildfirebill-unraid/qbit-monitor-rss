@@ -38,7 +38,7 @@ class Manager:
                 self.clients[iid].username = inst.get("username", "")
                 self.clients[iid].password = inst.get("password", "")
                 self.clients[iid].url = inst.get("url", "").rstrip("/")
-            self.instance_cache.setdefault(iid, {"torrents": [], "connected": False, "error": "", "version": None})
+            self.instance_cache.setdefault(iid, {"torrents": [], "categories": [], "connected": False, "error": "", "version": None})
         # drop removed instances
         for iid in list(self.clients):
             if iid not in seen:
@@ -78,7 +78,7 @@ class Manager:
             if iid not in self.clients:
                 continue
             client = self.clients[iid]
-            cache = self.instance_cache.setdefault(iid, {"torrents": [], "connected": False, "error": "", "version": None})
+            cache = self.instance_cache.setdefault(iid, {"torrents": [], "categories": [], "connected": False, "error": "", "version": None})
             try:
                 ver = await client.version()
                 if ver is None:
@@ -88,6 +88,7 @@ class Manager:
                 cache["version"] = ver
                 torrents = await client.torrents()
                 cache["torrents"] = torrents
+                cache["categories"] = await client.categories()
                 cache["connected"] = True
                 cache["error"] = ""
                 cache["last_fetch"] = now
@@ -189,18 +190,32 @@ class Manager:
         return False
 
     # ------------------------------------------------------------ add queue
+    def _feed_slot_limit(self, feed: dict) -> int:
+        """Per-feed slot cap; falls back to the global cap when unset."""
+        val = feed.get("max_slots")
+        if val:
+            return int(val)
+        return int(self.config.get("max_slots", 50))
+
     async def _process_queue(self):
-        max_slots = self.config.get("max_slots", 50)
+        max_slots = int(self.config.get("max_slots", 50))
         enabled_ids = [
             f["id"] for f in self.config.get("feeds", []) if f.get("enabled", True)
         ]
+        feeds_by_id = {f["id"]: f for f in self.config.get("feeds", [])}
         for _ in range(200):  # safety cap
             if self.db.slots_in_use() >= max_slots:
                 return
             pending = self.db.pending_items(feed_ids=enabled_ids)
             if not pending:
                 return
-            item = pending[0]
+            item = next(
+                (i for i in pending if self._feed_slot_limit(feeds_by_id.get(i["feed_id"], {}))
+                 > self.db.slots_in_use_for_feed(i["feed_id"])),
+                None,
+            )
+            if item is None:
+                return
             result = await self._try_add(item)
             if result in ("retry",):
                 return
@@ -239,8 +254,9 @@ class Manager:
             return "duplicate"
 
         filename = f"{info_hash[:16]}.torrent"
+        save_path = feed.get("savepath", "") or self.config.get("data_folder", "/data/torrents")
         resp = await client.add_file(
-            torrent_bytes, filename, feed.get("savepath", ""), feed.get("category", "")
+            torrent_bytes, filename, save_path, feed.get("category", "")
         )
         resp_l = resp.lower()
         if "duplicate" in resp_l:
@@ -291,6 +307,7 @@ class Manager:
                     "version": cache.get("version"),
                     "error": cache.get("error", ""),
                     "torrent_count": len(tor),
+                    "categories": cache.get("categories", []),
                     "download_speed": sum(t.get("dlspeed", 0) or 0 for t in tor),
                     "upload_speed": sum(t.get("upspeed", 0) or 0 for t in tor),
                 }
@@ -317,6 +334,7 @@ class Manager:
                 "seed_hours": self.config.get("seed_hours", 72.5),
                 "poll_interval_seconds": self.config.get("poll_interval_seconds", 30),
                 "rss_scan_interval_minutes": self.config.get("rss_scan_interval_minutes", 15),
+                "data_folder": self.config.get("data_folder", "/data/torrents"),
             },
         }
 
@@ -352,6 +370,7 @@ class Manager:
                     "instance_name": instance.get("name") if instance else "?",
                     "savepath": feed.get("savepath", ""),
                     "category": feed.get("category", ""),
+                    "max_slots": feed.get("max_slots"),
                     "enabled": bool(feed.get("enabled", True)),
                     "last_scan": feed.get("last_scan"),
                     "items": items,

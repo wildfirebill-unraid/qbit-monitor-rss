@@ -11,6 +11,7 @@ DEFAULTS = {
     "seed_hours": 72.5,
     "poll_interval_seconds": 30,
     "rss_scan_interval_minutes": 15,
+    "data_folder": "/data/torrents",
     "instances": [],
     "feeds": [],
 }

@@ -12,16 +12,17 @@
 
 **qbit-monitor-rss** is a self-hosted, Dockerized web app for [Unraid](https://unraid.net) that centralizes **multiple qBittorrent instances** and automatically grabs new releases from **private-tracker RSS feeds** — one dashboard, one configurable torrent slot budget, zero cross-instance duplicates.
 
-Think of it as a lightweight "tracker gatekeeper": it watches your private-tracker RSS feeds, filters already-downloaded content by **info-hash and normalized title**, and adds only genuinely new torrents to the qBittorrent instance you choose — all under a hard **50–200 slot cap** with automatic slot release after a seed-time requirement is met.
+Think of it as a lightweight "tracker gatekeeper": it watches your private-tracker RSS feeds, filters already-downloaded content by **info-hash and normalized title**, and adds only genuinely new torrents to the qBittorrent instance you choose — all under a global **slot cap** (with an optional per-feed override) and automatic slot release after a seed-time requirement is met.
 
 - **Multi-instance support** — watch any number of qBittorrent WebUI instances from a single UI (one tab each).
 - **Private-tracker friendly** — parse RSS 2.0 and Atom feeds, including `enclosure` and `<link href="...">` torrent downloads.
 - **No duplicates across feeds or instances** — info-hash check (already added + live client) plus normalized-title check.
-- **Configurable slot cap (50–200)** — slots are consumed on add and released after `seed_hours` of seeding (default 72.5 h) or when a torrent vanishes from the client.
+- **Configurable slot cap with per-feed overrides** — a global cap (default 50) plus an optional per-feed cap; slots are consumed on add and released after `seed_hours` of seeding (default 72.5 h) or when a torrent vanishes from the client.
 - **Automatic + manual scanning** — per-feed **Scan** button, a global force scan, and a scheduled scan every `rss_scan_interval_minutes`.
-- **Per-feed target routing** — each feed points at the instance it should add to, with optional save path and category.
+- **Per-feed target routing** — each feed points at the instance it should add to, with optional save path, category (autocompleted from the instance's categories), and max slots.
+- **Default save folder** — torrents land in `/data/torrents` by default (configurable); feeds can override per-feed.
 - **Persistent storage** — SQLite database and `config.json` live in `/data`, so your state survives restarts and updates.
-- **Web GUI included** — no external frontend build; a clean, sortable, tabbed interface is served directly by the app.
+- **Web GUI included** — no external frontend build; a clean, sortable, tabbed interface is served directly by the app, with a **Seed left** column showing time until a slot frees.
 - **Multi-arch container** — `linux/amd64` and `linux/arm64` images published to GHCR on every release.
 
 ## Table of contents
@@ -102,8 +103,9 @@ also editable from the GUI — no file editing required for day-to-day use.
 | `seed_hours` | 72.5 | — | Seed time (hours) before a slot is released |
 | `poll_interval_seconds` | 30 | 5–3600 | How often live torrent state is refreshed |
 | `rss_scan_interval_minutes` | 15 | 1–1440 | How often RSS feeds are scanned automatically |
+| `data_folder` | `/data/torrents` | — | Default save path used for feeds without a per-feed save path |
 
-Out-of-range `max_slots` values are rejected with HTTP 422 by the API; `config.json` also clamps on load.
+Out-of-range `max_slots` values are rejected with HTTP 422 by the API; `config.json` also clamps on load. The `data_folder` setting only affects feeds that don't set their own save path.
 
 ### qBittorrent instances
 
@@ -113,8 +115,13 @@ port, e.g. `http://192.168.0.15:8081`. The app logs in via the WebUI API
 
 ### RSS feeds
 
-Each feed points at an RSS/Atom URL, a target instance, and optional save path
-+ category. Scanning is manual (per-feed **Scan** button or the global force
+Each feed points at an RSS/Atom URL, a target instance, and optional save path,
+category, and max slots. The category field is autocompleted from the target
+instance's existing qBittorrent categories. If a feed has no save path, the
+global `data_folder` setting is used. If a feed has no `max_slots`, it shares
+the global slot budget; with a per-feed `max_slots` set, that feed can never
+occupy more slots than its own cap even when the global budget is free.
+Scanning is manual (per-feed **Scan** button or the global force
 scan) and automatic every `rss_scan_interval_minutes`.
 
 ## How an item flows
@@ -127,8 +134,9 @@ scan) and automatic every `rss_scan_interval_minutes`.
    - already added anywhere (hash in DB),
    - already present in any live client,
    - normalized title already tracked.
-4. If unique **and** a slot is free, the torrent is uploaded to the target
-   instance and the slot is marked used. If the cap is reached it stays queued.
+4. If unique **and** a slot is free (both the global budget and, if set, the
+   feed's per-feed cap), the torrent is uploaded to the target
+   instance and the slot is marked used. If a cap is reached it stays queued.
 5. Every poll, torrents with `seeding_time >= seed_hours * 3600` (or that
    vanished from the client) release their slot, letting the queue advance.
 
@@ -145,10 +153,12 @@ normalized title is matched against tracked items. A release fetched from two
 different trackers therefore still resolves to one torrent.
 
 **What happens when the slot cap is reached?** New items stay queued and are
-retried automatically as slots free up. Nothing is silently dropped.
+retried automatically as slots free up. Nothing is silently dropped. A feed with
+its own `max_slots` setting is limited by that feed's cap *and* the global cap.
 
 **When is a slot released?** After a torrent has been seeding for `seed_hours`
-(default 72.5 h), or immediately if the torrent disappears from the client.
+(default 72.5 h), or immediately if the torrent disappears from the client. The
+torrent table shows a **Seed left** column counting down until release.
 
 **Where is my data stored?** SQLite (`state.db`) and `config.json` in `/data`
 (`DATA_DIR`). Back it up or mount it wherever your appdata lives.
@@ -169,7 +179,7 @@ retried automatically as slots free up. Nothing is silently dropped.
 - `GET /api/state` — instances, slots, settings
 - `GET /api/torrents` — all torrents
 - `GET /api/rss` — feeds + items
-- `POST /api/settings` — update slots/seed/poll settings
+- `POST /api/settings` — update slots/seed/poll settings + `data_folder`
 - `POST /api/instances/save` | `/test` | `/delete`
 - `POST /api/feeds/save` | `/delete` | `/toggle` | `/{id}/scan`
 - `POST /api/rss/{guid}/action` — `ignore` / `retry` / `add-now`

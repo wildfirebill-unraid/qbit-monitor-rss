@@ -210,7 +210,11 @@ function renderTorrents() {
   if (!S.showCompleted) list = list.filter((t) => (t.progress || 0) < 1);
 
   list.sort((a, b) => {
-    const av = a[S.sortKey], bv = b[S.sortKey];
+    const seedHours = S.state?.slots?.seed_hours || 72.5;
+    const val = (t) => S.sortKey === "seed_left"
+      ? Math.max(0, seedHours * 3600 - (t.seeding_time || 0))
+      : t[S.sortKey];
+    const av = val(a), bv = val(b);
     if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * S.sortDir;
     return ((av ?? 0) - (bv ?? 0)) * S.sortDir;
   });
@@ -222,8 +226,9 @@ function renderTorrents() {
 
   let rows;
   if (!list.length) {
-    rows = `<tr><td colspan="${allTab ? 10 : 9}" class="empty">No torrents${q ? " matching \u201c" + esc(q) + "\u201d" : ""}</td></tr>`;
+    rows = `<tr><td colspan="${allTab ? 9 : 8}" class="empty">No torrents${q ? " matching \u201c" + esc(q) + "\u201d" : ""}</td></tr>`;
   } else {
+    const seedHours = S.state?.slots?.seed_hours || 72.5;
     rows = list.map((t) => {
       const name = t.name || t.hash || "";
       const prog = (t.progress || 0) * 100;
@@ -231,16 +236,16 @@ function renderTorrents() {
       const inst = allTab
         ? `<td><span class="inst-badge"><i style="background:${t.instance_connected ? "var(--green)" : "var(--red)"}"></i>${esc(t.instance_name)}</span></td>`
         : "";
+      const seedLeft = Math.max(0, seedHours * 3600 - ((t.seeding_time || 0)));
       return `<tr title="${esc(t.hash || "")}">
         ${inst}
         <td class="name">${esc(name)}${cat}</td>
         <td class="num">${fmtBytes(t.size)}</td>
         <td><span class="prog"><span class="bar"><i style="width:${prog.toFixed(1)}%"></i></span><span>${prog.toFixed(1)}%</span></span></td>
         <td>${stateBadge(t.state)}</td>
-        <td class="num">${fmtSpeed(t.dlspeed)}</td>
-        <td class="num">${fmtSpeed(t.upspeed)}</td>
         <td class="num">${fmtRatio(t.ratio)}</td>
         <td class="num">${fmtDuration(t.seeding_time)}</td>
+        <td class="num" title="Remaining until ${seedHours}h seeding frees a slot">${fmtDuration(seedLeft)}</td>
         <td class="num">${fmtDate(t.added_on)}</td>
       </tr>`;
     }).join("");
@@ -259,10 +264,9 @@ function renderTorrents() {
           <th data-k="size">Size${arrow("size")}</th>
           <th data-k="progress">Progress${arrow("progress")}</th>
           <th data-k="state">State${arrow("state")}</th>
-          <th data-k="dlspeed">Down${arrow("dlspeed")}</th>
-          <th data-k="upspeed">Up${arrow("upspeed")}</th>
           <th data-k="ratio">Ratio${arrow("ratio")}</th>
           <th data-k="seeding_time">Seed time${arrow("seeding_time")}</th>
+          <th data-k="seed_left">Seed left${arrow("seed_left")}</th>
           <th data-k="added_on">Added${arrow("added_on")}</th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -342,6 +346,7 @@ function feedCard(f) {
   const meta =
     `<div class="feed-meta">
       <span>Instance: <b>${esc(f.instance_name)}</b></span>
+      <span>Max slots: <b>${f.max_slots ? f.max_slots : "global"}</b></span>
       <span>Pending: <b>${counts.pending}</b></span>
       <span>Added: <b>${counts.added}</b></span>
       <span>Duplicate: <b>${counts.duplicate}</b></span>
@@ -435,6 +440,9 @@ function renderSettings() {
         <label>RSS scan interval (min)
           <input type="number" id="sl-rss" min="1" step="1" value="${set.rss_scan_interval_minutes}" />
         </label>
+        <label>Default save folder
+          <input type="text" id="sl-data" value="${esc(set.data_folder || "/data/torrents")}" placeholder="/data/torrents" />
+        </label>
         <button class="btn primary" id="sl-save">Save settings</button>
       </div>
     </div>
@@ -464,6 +472,7 @@ function renderSettings() {
       seed_hours: Number($("sl-seed").value) || 72.5,
       poll_interval_seconds: Math.max(5, Number($("sl-poll").value) || 30),
       rss_scan_interval_minutes: Math.max(1, Number($("sl-rss").value) || 15),
+      data_folder: $("sl-data").value.trim() || "/data/torrents",
     };
     await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
     await pollState();
@@ -527,11 +536,22 @@ function openFeedDialog(id) {
   $("feed-url").value = feed ? feed.url : "";
   $("feed-savepath").value = feed ? (feed.savepath || "") : "";
   $("feed-category").value = feed ? (feed.category || "") : "";
+  $("feed-maxslots").value = feed && feed.max_slots ? feed.max_slots : "";
   $("feed-enabled").checked = feed ? feed.enabled : true;
   const sel = $("feed-instance");
   sel.innerHTML = (S.state.instances || [])
     .map((i) => `<option value="${i.id}" ${feed && feed.instance_id === i.id ? "selected" : ""}>${esc(i.name)}</option>`)
     .join("") || `<option value="0">no instances \u2014 add one first</option>`;
+
+  const fillCategories = () => {
+    const dl = $("feed-categories");
+    const inst = (S.state.instances || []).find((i) => String(i.id) === String(sel.value));
+    dl.innerHTML = (inst && inst.categories ? inst.categories : [])
+      .map((c) => `<option value="${esc(c)}"></option>`)
+      .join("");
+  };
+  fillCategories();
+  sel.addEventListener("change", fillCategories);
   dlg.showModal();
 
   $("feed-save").onclick = async () => {
@@ -547,6 +567,7 @@ function openFeedDialog(id) {
         instance_id: instId,
         savepath: $("feed-savepath").value.trim(),
         category: $("feed-category").value.trim(),
+        max_slots: $("feed-maxslots").value ? Number($("feed-maxslots").value) : null,
         enabled: $("feed-enabled").checked,
       }),
     });
@@ -571,6 +592,7 @@ $("btn-settings").addEventListener("click", () => {
     $("set-seed").value = set.seed_hours;
     $("set-poll").value = set.poll_interval_seconds;
     $("set-rss").value = set.rss_scan_interval_minutes;
+    $("set-data").value = set.data_folder || "";
   }
   dlg.showModal();
 });
@@ -585,6 +607,7 @@ $("set-save").addEventListener("click", async () => {
       seed_hours: Number($("set-seed").value) || 72.5,
       poll_interval_seconds: Math.max(5, Number($("set-poll").value) || 30),
       rss_scan_interval_minutes: Math.max(1, Number($("set-rss").value) || 15),
+      data_folder: $("set-data").value.trim() || "/data/torrents",
     }),
   });
   $("settingsDialog").close();

@@ -45,6 +45,9 @@
     <label>RSS scan interval (minutes)
       <input type="number" id="set-rss" min="1" step="1" />
     </label>
+    <label>Default save folder (when a feed has no save path)
+      <input type="text" id="set-data" placeholder="/data/torrents" />
+    </label>
     <div class="dialog-actions">
       <button type="button" id="set-save" class="btn primary">Save</button>
       <button type="button" class="btn" data-close>Cancel</button>
@@ -83,8 +86,12 @@
     <label>Save path (optional, overrides instance default)
       <input type="text" id="feed-savepath" placeholder="/downloads/tracker" />
     </label>
-    <label>Category (optional)
-      <input type="text" id="feed-category" placeholder="tracker" />
+    <label>Category (optional, from instance)
+      <input type="text" id="feed-category" list="feed-categories" placeholder="tracker" />
+      <datalist id="feed-categories"></datalist>
+    </label>
+    <label>Max slots (optional, defaults to the global cap)
+      <input type="number" id="feed-maxslots" min="1" placeholder="e.g. 200" />
     </label>
     <label class="check"><input type="checkbox" id="feed-enabled" checked /> Enabled</label>
     <div class="dialog-actions">

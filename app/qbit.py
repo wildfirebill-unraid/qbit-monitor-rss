@@ -104,6 +104,20 @@ class QBittorrent:
             return []
         return []
 
+    async def categories(self) -> list[str]:
+        """Return the category names defined on this instance, or []."""
+        if not await self._ensure_auth():
+            return []
+        try:
+            r = await self._request("GET", "/api/v2/torrents/categories")
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, dict):
+                    return sorted(data.keys())
+        except (httpx.HTTPError, ValueError):
+            return []
+        return []
+
     async def torrents_by_hash(self, hashes: list[str]) -> list[dict]:
         """Fetch a subset of torrents by their info-hashes."""
         if not await self._ensure_auth():

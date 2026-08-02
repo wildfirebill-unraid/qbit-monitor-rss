@@ -80,6 +80,7 @@ class FeedIn(BaseModel):
     instance_id: int = 1
     savepath: str = ""
     category: str = ""
+    max_slots: int | None = None
     enabled: bool = True
 
 
@@ -88,6 +89,7 @@ class SettingsIn(BaseModel):
     seed_hours: float | None = Field(default=None, ge=1.0, le=24 * 30)
     poll_interval_seconds: int | None = Field(default=None, ge=5, le=3600)
     rss_scan_interval_minutes: int | None = Field(default=None, ge=1, le=1440)
+    data_folder: str | None = None
 
 
 # --------------------------------------------------------------------- state
@@ -124,6 +126,8 @@ async def api_settings(body: SettingsIn):
         cfg["poll_interval_seconds"] = data["poll_interval_seconds"]
     if "rss_scan_interval_minutes" in data:
         cfg["rss_scan_interval_minutes"] = data["rss_scan_interval_minutes"]
+    if "data_folder" in data:
+        cfg["data_folder"] = data["data_folder"].strip() or "/data/torrents"
     save_cfg()
     return {"ok": True, "settings": manager.status()["settings"]}
 
@@ -199,6 +203,7 @@ async def api_feed_save(body: FeedIn):
                 "instance_id": body.instance_id,
                 "savepath": body.savepath,
                 "category": body.category,
+                "max_slots": body.max_slots,
                 "enabled": body.enabled,
             }
         )
@@ -213,6 +218,7 @@ async def api_feed_save(body: FeedIn):
                 "instance_id": body.instance_id,
                 "savepath": body.savepath,
                 "category": body.category,
+                "max_slots": body.max_slots,
                 "enabled": body.enabled,
             }
         )
