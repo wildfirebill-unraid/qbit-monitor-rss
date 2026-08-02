@@ -21,7 +21,7 @@ Think of it as a lightweight "tracker gatekeeper": it watches your private-track
 - **Automatic + manual scanning** — per-feed **Scan** button, a global force scan, and a scheduled scan every `rss_scan_interval_minutes`.
 - **Per-feed target routing** — each feed points at the instance it should add to, with optional save path, category (autocompleted from the instance's categories), and max slots.
 - **Default save folder** — torrents land in `/data/torrents` by default (configurable); feeds can override per-feed.
-- **Manual add + move** — paste magnet links or `.torrent` URLs straight into the GUI (one per line, optional save path/category), and move any torrent between instances from the table — files stay on disk, the destination re-adds at the same save path and rechecks.
+- **Manual add + move** — add magnet links / `.torrent` URLs straight into the GUI (one per line, optional save path/category) **or upload a `.torrent` file from your machine**, and move any torrent between instances from the table — files stay on disk, the destination re-adds at the same save path and rechecks.
 - **Persistent storage** — SQLite database and `config.json` live in `/data`, so your state survives restarts and updates.
 - **Web GUI included** — no external frontend build; a clean, sortable, tabbed interface is served directly by the app, with a **Seed left** column showing time until a slot frees.
 - **Multi-arch container** — `linux/amd64` and `linux/arm64` images published to GHCR on every release.
@@ -174,10 +174,13 @@ scan) and automatic every `rss_scan_interval_minutes`.
 
 ### Manual add / move
 
-The **+ Add torrent** button (top of the torrents table) sends magnet links or
+The **+ Add magnet** button (top of the torrents table) sends magnet links or
 `.torrent` URLs to a chosen instance — one per line, with optional save path and
-category. It goes straight to the client and does *not* consume a tracked slot,
-so it's for one-off downloads you want outside the slot budget.
+category. The **+ Add torrent** button uploads a local `.torrent` file from your
+machine to a chosen instance, also with optional save path and category.
+
+Both go straight to the client and do *not* consume a tracked slot, so they're
+for one-off downloads you want outside the slot budget.
 
 The **Move** button (per-row, shown when you have more than one instance)
 re-homes a torrent to another instance: the destination re-adds the same
@@ -228,10 +231,10 @@ the already-downloaded data and rechecks it, and the source instance is removed
 without deleting its data. Seed time carried over in the tracker keeps the slot
 clock accurate.
 
-**Can I download something outside the RSS slot budget?** Yes — use the **+ Add
-torrent** button. Manually added torrents go straight to the client and don't
-reserve a tracked slot, so they never wait behind the queue or count toward the
-cap.
+**Can I download something outside the RSS slot budget?** Yes — use the
+**+ Add magnet** or **+ Add torrent** button. Manually added torrents go straight
+to the client and don't reserve a tracked slot, so they never wait behind the
+queue or count toward the cap.
 
 ## Troubleshooting
 
@@ -252,6 +255,7 @@ cap.
 - `POST /api/settings` — update slots/seed/poll settings + `data_folder`
 - `POST /api/instances/save` | `/test` | `/delete`
 - `POST /api/instances/{id}/add` — add magnet links / `.torrent` URLs to an instance
+- `POST /api/instances/{id}/add-file` — upload a local `.torrent` file (multipart `file`, optional `save_path` / `category`)
 - `POST /api/torrents/move` — move torrents between instances (`from_instance`, `to_instance`, `hashes`)
 - `POST /api/feeds/save` | `/delete` | `/toggle` | `/{id}/scan`
 - `POST /api/rss/{guid}/action` — `ignore` / `retry` / `add-now`
