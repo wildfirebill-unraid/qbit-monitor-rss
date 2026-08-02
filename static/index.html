@@ -101,10 +101,10 @@
   </form>
 </dialog>
 
-<!-- Add torrent dialog -->
+<!-- Add magnet dialog -->
 <dialog id="addDialog" class="dialog">
   <form method="dialog" class="dialog-inner">
-    <h2>Add torrent</h2>
+    <h2>Add magnet</h2>
     <label>Magnet links or .torrent URLs (one per line)
       <textarea id="add-urls" rows="3" placeholder="magnet:?xt=urn:btih:...&#10;https://tracker.example/file.torrent"></textarea>
     </label>
@@ -121,6 +121,31 @@
     <div id="add-result" class="test-result"></div>
     <div class="dialog-actions">
       <button type="button" id="add-go" class="btn primary">Add</button>
+      <button type="button" class="btn" data-close>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Upload torrent file dialog -->
+<dialog id="uploadDialog" class="dialog">
+  <form method="dialog" class="dialog-inner">
+    <h2>Add torrent</h2>
+    <label>Torrent file
+      <input type="file" id="upload-file" accept=".torrent,application/x-bittorrent" required />
+    </label>
+    <label>Download to instance
+      <select id="upload-instance"></select>
+    </label>
+    <label>Save path (optional)
+      <input type="text" id="upload-savepath" placeholder="/downloads/..." />
+    </label>
+    <label>Category (optional)
+      <input type="text" id="upload-category" list="upload-categories" placeholder="tv" />
+      <datalist id="upload-categories"></datalist>
+    </label>
+    <div id="upload-result" class="test-result"></div>
+    <div class="dialog-actions">
+      <button type="button" id="upload-go" class="btn primary">Add</button>
       <button type="button" class="btn" data-close>Cancel</button>
     </div>
   </form>

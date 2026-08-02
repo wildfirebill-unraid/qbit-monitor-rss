@@ -266,6 +266,7 @@ function renderTorrents() {
       <input class="search" placeholder="Search torrents\u2026" value="${esc(S.search)}" id="search-box" />
       <span class="btn ghost" id="toggle-completed" title="Show/hide 100% completed torrents" style="opacity:.85">&#128065;</span>
       <span style="flex:1"></span>
+      <button class="btn" id="magnet-add">+ Add magnet</button>
       <button class="btn primary" id="torrent-add">+ Add torrent</button>
     </div>
     <div class="torrent-table-wrap">
@@ -305,8 +306,10 @@ function wireTorrentEvents() {
       renderTorrents();
     })
   );
+  const magnetBtn = $("magnet-add");
+  if (magnetBtn) magnetBtn.addEventListener("click", () => openAddDialog());
   const addBtn = $("torrent-add");
-  if (addBtn) addBtn.addEventListener("click", () => openAddDialog());
+  if (addBtn) addBtn.addEventListener("click", () => openUploadDialog());
   document.querySelectorAll(".move-btn").forEach((b) =>
     b.addEventListener("click", () =>
       openMoveDialog(b.dataset.moveHash, Number(b.dataset.moveFrom))
@@ -693,6 +696,63 @@ function openAddDialog(preferredInstanceId) {
         category: $("add-category").value.trim(),
       }),
     });
+    res.classList.toggle("ok", r.ok);
+    res.classList.toggle("bad", !r.ok);
+    if (r.ok) {
+      res.textContent = `Added to ${sel.options[sel.selectedIndex].text}.`;
+      setTimeout(() => { dlg.close(); pollTorrents(); }, 600);
+    } else {
+      res.textContent = `Failed: ${r.error || "unknown error"}`;
+    }
+  };
+}
+
+function openUploadDialog(preferredInstanceId) {
+  const dlg = $("uploadDialog");
+  const sel = $("upload-instance");
+  const instances = S.state?.instances || [];
+  if (!instances.length) {
+    alert("Add a qBittorrent instance first.");
+    return;
+  }
+  const file = $("upload-file");
+  file.value = "";
+  $("upload-savepath").value = "";
+  $("upload-category").value = "";
+  $("upload-result").textContent = "";
+  $("upload-result").className = "test-result";
+  const preferred = preferredInstanceId
+    ?? (S.activeTab !== "all" ? Number(S.activeTab) : instances[0].id);
+  sel.innerHTML = instances
+    .map((i) => `<option value="${i.id}" ${i.id === preferred ? "selected" : ""}>${esc(i.name)}</option>`)
+    .join("");
+
+  const fillCategories = () => {
+    const inst = instances.find((i) => String(i.id) === String(sel.value));
+    $("upload-categories").innerHTML = (inst && inst.categories ? inst.categories : [])
+      .map((c) => `<option value="${esc(c)}"></option>`)
+      .join("");
+  };
+  fillCategories();
+  sel.addEventListener("change", fillCategories);
+  dlg.showModal();
+
+  $("upload-go").onclick = async () => {
+    if (!file.files || !file.files.length) { alert("Choose a .torrent file."); return; }
+    const res = $("upload-result");
+    res.className = "test-result";
+    res.textContent = "Uploading\u2026";
+    const fd = new FormData();
+    fd.append("file", file.files[0]);
+    fd.append("save_path", $("upload-savepath").value.trim());
+    fd.append("category", $("upload-category").value.trim());
+    let r;
+    try {
+      const resp = await fetch(`/api/instances/${Number(sel.value)}/add-file`, { method: "POST", body: fd });
+      r = await resp.json();
+    } catch (e) {
+      r = { ok: false, error: String(e) };
+    }
     res.classList.toggle("ok", r.ok);
     res.classList.toggle("bad", !r.ok);
     if (r.ok) {

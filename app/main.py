@@ -8,7 +8,7 @@ import time
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -294,6 +294,22 @@ async def api_instance_add(iid: int, body: AddTorrentIn):
         raise HTTPException(400, "urls is required")
     return await manager.add_torrent(
         iid, body.urls.strip(), body.save_path.strip(), body.category.strip()
+    )
+
+
+@app.post("/api/instances/{iid}/add-file")
+async def api_instance_add_file(
+    iid: int,
+    file: UploadFile = File(...),
+    save_path: str = Form(""),
+    category: str = Form(""),
+):
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "empty file")
+    filename = file.filename or "upload.torrent"
+    return await manager.add_torrent_file(
+        iid, data, filename, save_path.strip(), category.strip()
     )
 
 

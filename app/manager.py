@@ -310,6 +310,24 @@ class Manager:
             return {"ok": False, "error": resp}
         return {"ok": True, "resp": resp}
 
+    async def add_torrent_file(
+        self, instance_id: int, torrent_bytes: bytes, filename: str,
+        save_path: str = "", category: str = "",
+    ) -> dict:
+        """Upload a local .torrent file to an instance."""
+        inst = self._instance_config(instance_id)
+        if inst is None:
+            return {"ok": False, "error": "instance not found"}
+        client = self.clients.get(instance_id)
+        if client is None:
+            return {"ok": False, "error": "client not initialised"}
+        resp = await client.add_file(torrent_bytes, filename, save_path, category)
+        if resp == "Ok.":
+            return {"ok": True, "resp": resp}
+        if resp.startswith("error:") or resp == "auth failed":
+            return {"ok": False, "error": resp}
+        return {"ok": True, "resp": resp}
+
     def _instance_config(self, iid: int):
         return next((i for i in self.config.get("instances", []) if i["id"] == iid), None)
 
