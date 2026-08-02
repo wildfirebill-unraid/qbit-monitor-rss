@@ -10,7 +10,7 @@
 
 ![qbit-monitor-rss social preview](https://raw.githubusercontent.com/wildfirebill-unraid/qbit-monitor-rss/main/.github/social-preview.png)
 
-**qbit-monitor-rss** is a self-hosted, Dockerized web app for [Unraid](https://unraid.net) that centralizes **multiple qBittorrent instances** and automatically grabs new releases from **private-tracker RSS feeds** — one dashboard, one configurable torrent slot budget, zero cross-instance duplicates.
+**qbit-monitor-rss** is a self-hosted, Dockerized web app for [Unraid](https://unraid.net) (and any other Docker host) that centralizes **multiple qBittorrent instances** and automatically grabs new releases from **private-tracker RSS feeds** — one dashboard, one configurable torrent slot budget, zero cross-instance duplicates.
 
 Think of it as a lightweight "tracker gatekeeper": it watches your private-tracker RSS feeds, filters already-downloaded content by **info-hash and normalized title**, and adds only genuinely new torrents to the qBittorrent instance you choose — all under a global **slot cap** (with an optional per-feed override) and automatic slot release after a seed-time requirement is met.
 
@@ -28,7 +28,7 @@ Think of it as a lightweight "tracker gatekeeper": it watches your private-track
 ## Table of contents
 
 - [Why qbit-monitor-rss?](#why-qbit-monitor-rss)
-- [Quick start (Unraid / Docker)](#quick-start-unraid--docker)
+- [Quick start (Docker)](#quick-start-docker)
 - [Configuration](#configuration)
   - [Settings](#settings)
   - [qBittorrent instances](#qbittorrent-instances)
@@ -51,9 +51,13 @@ Managing a private-tracker seedbox is usually a juggling act: multiple qBittorre
 
 Result: your private-tracker ratio grows, your slot count stays under control, and you never download the same release twice — across any number of instances.
 
-## Quick start (Unraid / Docker)
+## Quick start (Docker)
 
-1. On your Unraid host, clone or copy this repo (or pull the image from GHCR):
+The image runs on **any Docker host** — Unraid, Synology, a VPS, or a plain
+Linux box. The steps below show Unraid but the same image/compose file works
+everywhere; only the network setup differs.
+
+1. On your Docker host, clone or copy this repo (or pull the image from GHCR):
 
    ```sh
    docker pull ghcr.io/wildfirebill-unraid/qbit-monitor-rss:latest
@@ -77,7 +81,7 @@ Result: your private-tracker ratio grows, your slot count stays under control, a
    docker compose up -d --build
    ```
 
-4. Open `http://<unraid-ip>:8200` and add your qBittorrent instances + RSS feeds
+4. Open `http://<host-ip>:8200` and add your qBittorrent instances + RSS feeds
    from the web UI.
 
 Data (SQLite database + `config.json`) persists in `./data` (`/data` inside the
@@ -113,6 +117,19 @@ Each instance is `URL + username + password`. Use the host IP and per-instance
 port, e.g. `http://192.168.0.15:8081`. The app logs in via the WebUI API
 (`/api/v2/auth/login`) and re-authenticates on 401/403.
 
+**Commercial seedboxes work too.** The app only speaks the standard qBittorrent
+WebUI API, so any provider running qBittorrent can be added as an instance —
+Feral, Whatbox, Ultra.cc, Seedboxes.cc, and similar. Just enable the seedbox's
+qBittorrent **WebUI** in its control panel, then add it with the WebUI URL and
+credentials. Two things to watch:
+
+- **Reachability** — the app must be able to reach the seedbox URL. From a
+  container that's normally fine, but confirm your provider doesn't block the
+  API endpoints or require a whitelisted IP.
+- **Provider limits** — some hosts cap API access, auth attempts, or concurrent
+  connections; a persistent `login failed` or timeouts usually mean a provider
+  policy, not an app issue.
+
 ### RSS feeds
 
 Each feed points at an RSS/Atom URL, a target instance, and optional save path,
@@ -145,6 +162,11 @@ scan) and automatic every `rss_scan_interval_minutes`.
 **Does this work with private trackers?** Yes — it only uses standard RSS 2.0 /
 Atom feeds and the qBittorrent WebUI API. No tracker-specific code. Download
 limits remain your responsibility; the slot cap is there to help you respect them.
+
+**Does this work with a commercial seedbox?** Yes — add any qBittorrent WebUI
+instance, hosted anywhere, as a normal instance (see
+[#qbittorrent-instances](#qbittorrent-instances)). Categories, per-feed routing,
+and the slot system all work identically against a seedbox.
 
 **How are duplicates prevented?** Three ways, in order: the feed guid is
 remembered in the database; the torrent's computed info-hash is checked against
