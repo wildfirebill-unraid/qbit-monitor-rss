@@ -295,3 +295,13 @@ table.torrents { width: 100%; border-collapse: collapse; font-size: 13px; }
 .about-row span { color: var(--muted); }
 .about-row a { color: var(--accent); }
 .about-copy { color: var(--muted); font-size: 12px; margin-top: 18px; text-align: center; }
+.about-update {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 18px; padding: 10px 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  font-size: 13px;
+}
+.about-update .about-checking { color: var(--muted); }
+.about-update .about-update-ok { color: var(--muted); }
+.about-update .about-update-new { color: var(--accent); font-weight: 600; }
+.about-update .about-update-fail { color: var(--red); }

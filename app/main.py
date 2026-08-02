@@ -3,8 +3,11 @@
 import asyncio
 import logging
 import os
+import re
+import time
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -131,6 +134,72 @@ async def api_about():
         "issues_url": APP_ISSUES_URL,
         "copyright": APP_COPYRIGHT,
     }
+
+
+# ------------------------------------------------------------------- updates
+_update_cache: dict = {"ts": 0.0, "data": None}
+
+
+def _api_releases_latest_url() -> str:
+    repo = APP_REPO_URL.rstrip("/").split("github.com/")[-1]
+    return f"https://api.github.com/repos/{repo}/releases/latest"
+
+
+def _version_key(v: str):
+    """Parse a version like '0.3.0-beta' or 'v0.3.0-beta' for comparison."""
+    m = re.match(r"v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-.](\S+))?", v.strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2) or 0), int(m.group(3) or 0), m.group(4) or "")
+
+
+def is_newer(latest: str, current: str) -> bool | None:
+    """True if latest is a newer release than current. None if either is unknown."""
+    k_latest, k_current = _version_key(latest), _version_key(current)
+    if k_latest is None or k_current is None:
+        return None
+    if k_latest[:3] > k_current[:3]:
+        return True
+    if k_latest[:3] < k_current[:3]:
+        return False
+    pre_latest, pre_current = k_latest[3], k_current[3]
+    if pre_latest == pre_current:
+        return False
+    if not pre_latest:
+        return True  # stable > prerelease with same core
+    if not pre_current:
+        return False
+    return pre_latest > pre_current
+
+
+@app.get("/api/update")
+async def api_update():
+    now = time.time()
+    if _update_cache["data"] and now - _update_cache["ts"] < 300:
+        return _update_cache["data"]
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            r = await client.get(
+                _api_releases_latest_url(),
+                headers={"User-Agent": "qbit-monitor-rss/update-check"},
+            )
+            if r.status_code != 200:
+                return {"ok": False, "error": f"GitHub API responded {r.status_code}"}
+            data = r.json()
+    except httpx.HTTPError as exc:
+        return {"ok": False, "error": str(exc)}
+    latest = data.get("tag_name") or ""
+    if not latest:
+        return {"ok": False, "error": "no latest release found"}
+    result = {
+        "ok": True,
+        "current": APP_VERSION,
+        "latest": latest,
+        "update_available": is_newer(latest, APP_VERSION),
+        "releases_url": APP_REPO_URL + "/releases",
+    }
+    _update_cache.update({"ts": now, "data": result})
+    return result
 
 
 # ----------------------------------------------------------------- settings

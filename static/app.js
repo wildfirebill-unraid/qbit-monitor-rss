@@ -496,6 +496,9 @@ async function renderAbout() {
     <div class="about-card">
       <h1>${esc(info.name)}</h1>
       <div class="sub">v${esc(info.version)}</div>
+      <div class="about-update" id="about-update">
+        <button class="btn sm ghost" id="update-check" onclick="checkUpdate()">Check for updates</button>
+      </div>
       <div class="about-row"><span>Creator</span><b>${esc(info.creator)}</b></div>
       <div class="about-row"><span>Homepage</span><a href="${esc(info.repo_url)}" target="_blank" rel="noopener">${esc(info.repo_url)}</a></div>
       <div class="about-row"><span>Issues</span><a href="${esc(info.issues_url)}" target="_blank" rel="noopener">${esc(info.issues_url)}</a></div>
@@ -503,6 +506,34 @@ async function renderAbout() {
       <div class="about-copy">${esc(info.copyright)}</div>
     </div>
   `;
+  checkUpdate();
+}
+
+async function checkUpdate() {
+  const box = $("about-update");
+  if (!box) return;
+  box.innerHTML = `<span class="about-checking">Checking for updates\u2026</span>`;
+  let data;
+  try {
+    data = await api("/api/update");
+  } catch (e) {
+    box.innerHTML = `<span class="about-update-fail">Could not reach update server.</span>`;
+    return;
+  }
+  if (!data.ok) {
+    box.innerHTML = `<span class="about-update-fail">Update check failed: ${esc(data.error || "unknown error")}</span>
+      <button class="btn sm ghost" onclick="checkUpdate()">Try again</button>`;
+    return;
+  }
+  if (data.update_available === null) {
+    box.innerHTML = `<span class="about-update-ok">Running from source (v${esc(data.current)}); latest release is ${esc(data.latest)}.</span>`;
+  } else if (data.update_available) {
+    box.innerHTML = `<span class="about-update-new">Update available: ${esc(data.latest)}</span>
+      <a class="btn sm primary" href="${esc(data.releases_url)}" target="_blank" rel="noopener">Go to releases</a>`;
+  } else {
+    box.innerHTML = `<span class="about-update-ok">Up to date (${esc(data.latest)}).</span>
+      <button class="btn sm ghost" onclick="checkUpdate()">Check again</button>`;
+  }
 }
 
 /* --------------------------------------------------------------- dialogs */
