@@ -100,6 +100,12 @@
     <h2>Tracker</h2>
     <input type="hidden" id="tracker-id" />
     <label>Name <input type="text" id="tracker-name" placeholder="e.g. BTN" /></label>
+    <label>Announce URL (used to auto-match torrents to this tracker's slots)
+      <input type="text" id="tracker-url" placeholder="https://tracker.example/announce" />
+    </label>
+    <label>Abbreviation (shown in dropdowns; defaults to URL if empty)
+      <input type="text" id="tracker-abbr" placeholder="e.g. BTN" />
+    </label>
     <label>Max slots (optional, shared across all feeds of this tracker; defaults to 50)
       <input type="number" id="tracker-maxslots" min="1" placeholder="e.g. 200" />
     </label>

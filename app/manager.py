@@ -96,7 +96,62 @@ class Manager:
             except Exception as exc:  # noqa: BLE001
                 cache["connected"] = False
                 cache["error"] = str(exc)
+        self._auto_match_client_trackers()
         self._update_tracked()
+
+    def _tracker_label(self, tracker: dict) -> str:
+        """Display label for a tracker: abbreviation, else URL, else name."""
+        if not tracker:
+            return ""
+        return (
+            (tracker.get("abbr") or tracker.get("url") or tracker.get("name") or "")
+            .strip()
+            or f"Tracker {tracker['id']}"
+        )
+
+    def _tracker_for_tracker_str(self, tracker_str: str):
+        """Find a configured tracker whose abbreviation (else URL) is a
+        substring of the given string (e.g. a client torrent's primary
+        tracker URL)."""
+        s = (tracker_str or "").lower()
+        if not s:
+            return None
+        for tr in self.config.get("trackers", []):
+            key = (tr.get("abbr") or tr.get("url") or "").strip().lower()
+            if key and key in s:
+                return tr
+        return None
+
+    def _auto_match_client_trackers(self) -> None:
+        """Assign untracked client torrents to a tracker's slot budget by
+        matching their primary tracker URL against configured trackers, so
+        slots reflect what is actually in the client."""
+        tracked = {
+            (r["hash"].lower(), r["instance_id"])
+            for r in self.db.tracked_all()
+        }
+        for inst in self.config.get("instances", []):
+            iid = inst["id"]
+            cache = self.instance_cache.get(iid, {})
+            for t in cache.get("torrents", []):
+                h = (t.get("hash") or "").lower()
+                if not h or (h, iid) in tracked:
+                    continue
+                tr = self._tracker_for_tracker_str(t.get("tracker") or "")
+                if tr is None:
+                    continue
+                title = t.get("name") or h
+                slot_released = 1 if tr.get("public") else 0
+                self.db.track_torrent(
+                    h, iid, title, None,
+                    slot_released=slot_released, tracker_id=tr["id"],
+                )
+                tracked.add((h, iid))
+                log.info(
+                    "Auto-matched %s -> tracker %s%s",
+                    title, self._tracker_label(tr),
+                    " (public, no slot)" if slot_released else " (slot taken)",
+                )
 
     def _tracker_for_feed(self, feed: dict):
         """Resolve the tracker config a feed belongs to, or None when unassigned."""
@@ -509,6 +564,8 @@ class Manager:
                 {
                     "id": tr["id"],
                     "name": tr.get("name", f"Tracker {tr['id']}"),
+                    "url": tr.get("url", ""),
+                    "abbr": tr.get("abbr", ""),
                     "max_slots": tr.get("max_slots"),
                     "seed_hours": tr.get("seed_hours"),
                     "public": bool(tr.get("public")),
@@ -551,7 +608,7 @@ class Manager:
                     tid = tracker_by_hash.get(key)
                     tracker = trackers_by_id.get(tid) if tid else None
                 row["tracker"] = (
-                    tracker.get("name")
+                    self._tracker_label(tracker)
                     if tracker else (feed.get("name", "") if feed else "")
                 )
                 out.append(row)
@@ -581,6 +638,8 @@ class Manager:
                         {
                             "id": tracker["id"],
                             "name": tracker.get("name", ""),
+                            "url": tracker.get("url", ""),
+                            "abbr": tracker.get("abbr", ""),
                             "max_slots": tracker.get("max_slots"),
                             "seed_hours": tracker.get("seed_hours"),
                             "public": bool(tracker.get("public")),

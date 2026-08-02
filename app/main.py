@@ -86,6 +86,8 @@ class InstanceIn(BaseModel):
 class TrackerIn(BaseModel):
     id: int | None = None
     name: str = ""
+    url: str = ""
+    abbr: str = ""
     max_slots: int | None = Field(default=None, ge=1, le=1000)
     seed_hours: float | None = Field(default=None, ge=1.0, le=24 * 30)
     public: bool = False
@@ -409,6 +411,8 @@ async def api_tracker_save(body: TrackerIn):
             {
                 "id": new_id,
                 "name": body.name.strip(),
+                "url": body.url.strip(),
+                "abbr": body.abbr.strip(),
                 "max_slots": body.max_slots,
                 "seed_hours": body.seed_hours,
                 "public": body.public,
@@ -421,6 +425,8 @@ async def api_tracker_save(body: TrackerIn):
         tracker.update(
             {
                 "name": body.name.strip(),
+                "url": body.url.strip(),
+                "abbr": body.abbr.strip(),
                 "max_slots": body.max_slots,
                 "seed_hours": body.seed_hours,
                 "public": body.public,

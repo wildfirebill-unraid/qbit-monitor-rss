@@ -21,11 +21,16 @@ function esc(s) {
   }[c]));
 }
 
+function trackerLabel(t) {
+  if (!t) return "";
+  return (t.abbr || t.url || t.name || "").trim() || `Tracker ${t.id}`;
+}
+
 function trackerOptions() {
   const trackers = S.state?.trackers || [];
   const opts = [`<option value="">No tracker</option>`];
   for (const t of trackers) {
-    const label = t.public ? `${t.name} (public)` : t.name;
+    const label = t.public ? `${trackerLabel(t)} (public)` : trackerLabel(t);
     opts.push(`<option value="${t.id}">${esc(label)}</option>`);
   }
   return opts.join("");
@@ -360,7 +365,7 @@ function feedCard(f) {
   const tr = f.tracker;
   const slotsInfo = tr && tr.public
     ? `<span>Tracker: <b>public</b></span>`
-    : `<span>Tracker: <b>${tr ? esc(tr.name) : "default"}</b></span>
+    : `<span>Tracker: <b>${tr ? esc(trackerLabel(tr)) : "default"}</b></span>
        <span>Slots: <b>${tr && tr.max_slots ? tr.max_slots : 50}</b></span>
        <span>Seed: <b>${tr && tr.seed_hours ? tr.seed_hours + "h" : "72.5h"}</b></span>`;
   const meta =
@@ -442,7 +447,8 @@ function renderSettings() {
   const trackerCards = (s.trackers || []).length
     ? s.trackers.map((t) => `
       <div class="card">
-        <h3>${esc(t.name)}</h3>
+        <h3>${esc(trackerLabel(t))}</h3>
+        ${t.url ? `<div class="status-line">${esc(t.url)}</div>` : ""}
         <div class="status-line">${t.public
           ? "public \u00b7 no slot or seed limits"
           : `${t.max_slots ? t.max_slots : 50} max slots \u00b7 seed ${t.seed_hours ? t.seed_hours + "h" : "72.5h"}`}
@@ -634,7 +640,7 @@ function openFeedDialog(id) {
   const trSel = $("feed-tracker");
   trSel.innerHTML = `<option value="">No tracker (default 50 slots / 72.5h)</option>` +
     (S.state.trackers || [])
-      .map((t) => `<option value="${t.id}" ${feed && feed.tracker_id === t.id ? "selected" : ""}>${esc(t.name)}${t.public ? " (public)" : ""}</option>`)
+      .map((t) => `<option value="${t.id}" ${feed && feed.tracker_id === t.id ? "selected" : ""}>${esc(trackerLabel(t))}${t.public ? " (public)" : ""}</option>`)
       .join("");
 
   const fillCategories = () => {
@@ -675,6 +681,8 @@ function openTrackerDialog(id) {
   const tr = id ? (S.state.trackers || []).find((t) => t.id === id) : null;
   $("tracker-id").value = tr ? tr.id : "";
   $("tracker-name").value = tr ? tr.name : "";
+  $("tracker-url").value = tr ? tr.url || "" : "";
+  $("tracker-abbr").value = tr ? tr.abbr || "" : "";
   $("tracker-maxslots").value = tr && tr.max_slots ? tr.max_slots : "";
   $("tracker-seedhours").value = tr && tr.seed_hours ? tr.seed_hours : "";
   $("tracker-public").checked = tr ? tr.public : false;
@@ -687,6 +695,8 @@ function openTrackerDialog(id) {
       body: JSON.stringify({
         id: $("tracker-id").value ? Number($("tracker-id").value) : null,
         name: $("tracker-name").value.trim(),
+        url: $("tracker-url").value.trim(),
+        abbr: $("tracker-abbr").value.trim(),
         max_slots: $("tracker-maxslots").value ? Number($("tracker-maxslots").value) : null,
         seed_hours: $("tracker-seedhours").value ? Number($("tracker-seedhours").value) : null,
         public: $("tracker-public").checked,
