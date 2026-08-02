@@ -1,0 +1,33 @@
+name: Support / configuration question
+description: Ask a question about setup, Unraid, docker, or private-tracker configuration
+title: "[Question]: "
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask away! Please share your setup details so we can help faster.
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running it?
+      options:
+        - Unraid + Community Apps template
+        - Unraid + docker compose
+        - Docker CLI
+        - Local (uvicorn)
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to configure, and what happened?
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: Redacted snippets of instance/feed settings are fine. Never include passwords or tokens.
+      render: text

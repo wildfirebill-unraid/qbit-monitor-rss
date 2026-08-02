@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a bug or unexpected behavior in qbit-monitor-rss
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report. Please be as specific as possible — logs and reproduction steps make bugs much faster to fix.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Which release/tag are you running? (e.g. v0.1.0beta, `latest`, git main)
+      placeholder: v0.1.0beta
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running it?
+      options:
+        - Unraid + Community Apps template
+        - Unraid + docker compose
+        - Docker CLI
+        - Local (uvicorn)
+    validations:
+      required: true
+  - type: textarea
+    id: describe
+    attributes:
+      label: Describe the bug
+      description: What happened, and what did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add a qBittorrent instance at http://...
+        2. Add an RSS feed ...
+        3. Click Scan ...
+        4. See error ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste relevant application logs (no credentials — redact passwords/tokens).
+      render: text
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Unraid version, qBittorrent version, browser.
+      placeholder: Unraid 7.0, qBittorrent 5.0, Firefox

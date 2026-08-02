@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<Container>
+  <Name>qbit-monitor-rss</Name>
+  <Repository>ghcr.io/wildfirebill-unraid/qbit-monitor-rss:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Support>https://github.com/wildfirebill-unraid/qbit-monitor-rss/issues</Support>
+  <Project>https://github.com/wildfirebill-unraid/qbit-monitor-rss</Project>
+  <Overview><![CDATA[<h1>qbit-monitor-rss</h1>
+<p>Self-hosted web app that monitors <strong>multiple qBittorrent instances</strong> and automatically adds new releases from <strong>private-tracker RSS feeds</strong> to the instance of your choice, under a configurable <strong>50-200 slot cap</strong> with zero cross-instance duplicates.</p>
+<p><strong>Features:</strong></p>
+<ul>
+  <li>Multi-instance qBittorrent support (one tab per instance)</li>
+  <li>RSS 2.0 + Atom feed parsing (enclosure and &lt;link href&gt; torrents)</li>
+  <li>Dedup by info-hash (added + live client) and normalized title</li>
+  <li>Configurable slot cap (50-200) with slot release after a seed-time requirement</li>
+  <li>Manual + automatic feed scans</li>
+  <li>Persistent state (SQLite + config.json) in /data</li>
+  <li>Built-in web GUI, no external frontend build</li>
+  <li>Multi-arch images (linux/amd64 + linux/arm64) on GHCR</li>
+</ul>
+<p>Documentation: <a href="https://github.com/wildfirebill-unraid/qbit-monitor-rss">GitHub repo</a></p>]]></Overview>
+  <Category>Downloaders:Web:Other:</Category>
+  <TemplateURL>https://raw.githubusercontent.com/wildfirebill-unraid/qbit-monitor-rss/main/unraid/qbit-monitor-rss.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/wildfirebill-unraid/qbit-monitor-rss/main/.github/icon.png</Icon>
+  <Description>Monitor multiple qBittorrent instances and auto-add private-tracker RSS items under a configurable 50-200 slot cap.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>8200</HostPort>
+        <ContainerPort>8000</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/qbit-monitor-rss</HostDir>
+      <ContainerDir>/data</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Data>
+  <Environment/>
+  <Config>
+    <Field>
+      <Name>WebUI</Name>
+      <Target>/</Target>
+      <Default>http://[IP]:[PORT:8200]</Default>
+      <Description>qbit-monitor-rss web interface. Configure instances, feeds, and settings from here.</Description>
+      <Type>Url</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+    </Field>
+    <Field>
+      <Name>WebUI Port</Name>
+      <Target>8200</Target>
+      <Default>8200</Default>
+      <Description>Host port for the web UI. Change this to map the app to a different port on your Unraid host.</Description>
+      <Type>Port</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+    </Field>
+    <Field>
+      <Name>AppData</Name>
+      <Target>/data</Target>
+      <Default>/mnt/user/appdata/qbit-monitor-rss</Default>
+      <Description>Persistent storage for the SQLite database and config.json. Back this folder up to keep your instances, feeds, and slot state.</Description>
+      <Type>Path</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+    </Field>
+    <Field>
+      <Name>User-Agent</Name>
+      <Target>USER_AGENT</Target>
+      <Default>qbit-monitor-rss/0.1</Default>
+      <Description>Optional HTTP User-Agent override. Some trackers only serve feeds to known clients or require a custom UA.</Description>
+      <Type>Variable</Type>
+      <Display>advanced</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Field>
+  </Config>
+</Container>
